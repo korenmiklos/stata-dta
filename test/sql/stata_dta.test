@@ -4,20 +4,29 @@
 
 # Before we load the extension, this will fail
 statement error
-SELECT read_stata_dta('test.dta');
+SELECT * FROM read_stata_dta('test.dta');
 ----
-Catalog Error: Scalar Function with name read_stata_dta does not exist!
+Catalog Error: Table Function with name read_stata_dta does not exist!
 
 # Require statement will ensure this test is run with this extension loaded
 require stata_dta
 
-# Confirm the extension works
-query I
-SELECT read_stata_dta('test.dta');
-----
-Reading Stata DTA file: test.dta
-
+# Test extension info function
 query I
 SELECT stata_dta_info('v1.0') ILIKE 'Stata DTA Extension v1.0 - OpenSSL version: OpenSSL%';
 ----
 true
+
+# Test that function exists but fails with non-existent file
+statement error
+SELECT * FROM read_stata_dta('nonexistent.dta');
+----
+IO Error: Cannot open Stata file: nonexistent.dta
+
+# Test reading an empty result (this will work when we have test files)
+# For now, just test that the function is properly registered
+statement ok
+CREATE TABLE test_stata AS SELECT * FROM read_stata_dta('test.dta') LIMIT 0;
+
+statement ok
+DROP TABLE test_stata;

@@ -1,0 +1,136 @@
+# name: test/sql/stata_dta_functional.test  
+# description: functional tests for stata_dta extension with real data files
+# group: [sql]
+
+require stata_dta
+
+# Test 1: Read simple numeric data
+query III
+SELECT * FROM read_stata_dta('test/data/simple.dta') ORDER BY id;
+----
+1	10.5	100
+2	20.3	200
+3	30.1	300
+4	40.7	400
+5	50.2	500
+
+# Test 2: Count rows in simple dataset
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/simple.dta');
+----
+5
+
+# Test 3: Column names and types from simple dataset
+query I
+SELECT COUNT(*) FROM (DESCRIBE SELECT * FROM read_stata_dta('test/data/simple.dta'));
+----
+3
+
+# Test 4: Read mixed data types
+statement ok
+CREATE TEMP TABLE mixed_data AS SELECT * FROM read_stata_dta('test/data/mixed_types.dta');
+
+query I
+SELECT COUNT(*) FROM mixed_data;
+----
+4
+
+# Test 5: String data handling
+query I
+SELECT COUNT(DISTINCT name) FROM read_stata_dta('test/data/mixed_types.dta');
+----
+4
+
+# Test 6: Numeric precision with missing values
+statement ok  
+CREATE TEMP TABLE missing_data AS SELECT * FROM read_stata_dta('test/data/with_missing.dta');
+
+query I
+SELECT COUNT(*) FROM missing_data WHERE score IS NOT NULL;
+----
+3
+
+# Test 7: Empty dataset handling
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/empty.dta');
+----
+0
+
+# Test 8: Large dataset performance test
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/large_dataset.dta');
+----
+10000
+
+# Test 9: Different Stata versions compatibility
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/version_114.dta');
+----
+3
+
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/version_117.dta'); 
+----
+3
+
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/version_118.dta');
+----
+3
+
+# Test 10: String length handling
+statement ok
+CREATE TEMP TABLE string_data AS SELECT * FROM read_stata_dta('test/data/string_lengths.dta');
+
+query I
+SELECT LENGTH(long_str) > 50 FROM string_data LIMIT 1;
+----
+true
+
+# Test 11: Aggregation operations
+query I
+SELECT ROUND(AVG(value), 1) FROM read_stata_dta('test/data/simple.dta');
+----
+30.2
+
+# Test 12: Join operations with DuckDB tables
+statement ok
+CREATE TEMP TABLE duckdb_data AS SELECT generate_series(1,5) as id, 'extra_' || generate_series(1,5) as extra;
+
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/simple.dta') s 
+JOIN duckdb_data d ON s.id = d.id;
+----  
+5
+
+# Test 13: Window functions
+query I
+SELECT COUNT(*) FROM (
+    SELECT *, ROW_NUMBER() OVER (ORDER BY value) as rn 
+    FROM read_stata_dta('test/data/simple.dta')
+);
+----
+5
+
+# Test 14: Filtering and projection
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/simple.dta') WHERE value > 25.0;
+----
+3
+
+# Test 15: Data export (round-trip test preparation)
+statement ok
+COPY (SELECT * FROM read_stata_dta('test/data/simple.dta')) TO 'test/output_simple.csv';
+
+# Cleanup
+statement ok
+DROP TABLE IF EXISTS mixed_data;
+
+statement ok  
+DROP TABLE IF EXISTS missing_data;
+
+statement ok
+DROP TABLE IF EXISTS string_data;
+
+statement ok
+DROP TABLE IF EXISTS duckdb_data;

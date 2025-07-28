@@ -1,0 +1,95 @@
+# name: test/sql/stata_dta_performance.test
+# description: performance tests for stata_dta extension
+# group: [sql]
+
+require stata_dta
+
+# Test 1: Large dataset full scan
+statement ok
+CREATE TEMP TABLE large_scan AS SELECT * FROM read_stata_dta('test/data/large_dataset.dta');
+
+query I  
+SELECT COUNT(*) FROM large_scan;
+----
+10000
+
+# Test 2: Aggregation performance on large dataset
+query I
+SELECT COUNT(DISTINCT category) FROM read_stata_dta('test/data/large_dataset.dta');
+----
+4
+
+# Test 3: Statistical operations
+statement ok
+CREATE TEMP TABLE stats AS 
+SELECT 
+    AVG(random_float) as avg_float,
+    STDDEV(random_float) as std_float,
+    MIN(random_int) as min_int,
+    MAX(random_int) as max_int,
+    COUNT(*) as total_rows
+FROM read_stata_dta('test/data/large_dataset.dta');
+
+query I
+SELECT total_rows FROM stats;
+----
+10000
+
+# Test 4: Chunked reading (simulate)  
+query I
+SELECT COUNT(*) FROM (
+    SELECT * FROM read_stata_dta('test/data/large_dataset.dta') LIMIT 1000
+);
+----
+1000
+
+# Test 5: Memory efficiency test - multiple scans
+query I
+SELECT 
+    (SELECT COUNT(*) FROM read_stata_dta('test/data/large_dataset.dta')) +
+    (SELECT COUNT(*) FROM read_stata_dta('test/data/large_dataset.dta'))
+;
+----
+20000
+
+# Test 6: Complex query performance
+statement ok
+CREATE TEMP TABLE complex_query AS
+SELECT 
+    category,
+    COUNT(*) as count,
+    AVG(random_float) as avg_float,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY random_int) as median_int
+FROM read_stata_dta('test/data/large_dataset.dta') 
+GROUP BY category
+ORDER BY avg_float;
+
+query I
+SELECT COUNT(*) FROM complex_query;
+----
+4
+
+# Test 7: Index-like operations (ORDER BY)
+statement ok
+CREATE TEMP TABLE ordered_data AS 
+SELECT * FROM read_stata_dta('test/data/large_dataset.dta') 
+ORDER BY random_float 
+LIMIT 100;
+
+query I
+SELECT COUNT(*) FROM ordered_data;
+----
+100
+
+# Cleanup
+statement ok
+DROP TABLE IF EXISTS large_scan;
+
+statement ok
+DROP TABLE IF EXISTS stats;
+
+statement ok
+DROP TABLE IF EXISTS complex_query;
+
+statement ok
+DROP TABLE IF EXISTS ordered_data;

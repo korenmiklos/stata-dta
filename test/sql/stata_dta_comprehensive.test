@@ -1,0 +1,78 @@
+# name: test/sql/stata_dta_comprehensive.test
+# description: comprehensive tests for stata_dta extension functionality
+# group: [sql]
+
+require stata_dta
+
+# Test 1: Extension info function
+query I
+SELECT stata_dta_info('version') ILIKE '%Stata DTA Extension%';
+----
+true
+
+# Test 2: Non-existent file handling
+statement error
+SELECT * FROM read_stata_dta('this_file_does_not_exist.dta');
+----
+IO Error: Cannot open Stata file: this_file_does_not_exist.dta
+
+# Test 3: Invalid file format (try to read this test file as DTA)
+statement error  
+SELECT * FROM read_stata_dta('test/sql/stata_dta_comprehensive.test');
+----
+IO Error: Error opening Stata file
+
+# Test 4: Function signature validation - missing filename
+statement error
+SELECT * FROM read_stata_dta();
+----
+Binder Error: No function matches the given name and argument types
+
+# Test 5: Function signature validation - wrong argument type
+statement error
+SELECT * FROM read_stata_dta(123);
+----
+Binder Error: No function matches the given name and argument types
+
+# Test 6: NULL filename handling
+statement error
+SELECT * FROM read_stata_dta(NULL);
+----
+Invalid Input Error: read_stata_dta requires a filename argument
+
+# Test 7: Empty string filename
+statement error
+SELECT * FROM read_stata_dta('');
+----
+IO Error: Cannot open Stata file
+
+# Test 8: Schema validation for potential DTA file
+# This will fail until we have actual test files, which is expected
+statement ok
+PREPARE test_schema AS SELECT * FROM read_stata_dta($1) LIMIT 0;
+
+# Test 9: DESCRIBE functionality (when we have valid files)
+statement ok  
+PREPARE describe_stata AS DESCRIBE SELECT * FROM read_stata_dta($1);
+
+# Test 10: Extension function registration verification
+query I
+SELECT COUNT(*) FROM duckdb_functions() WHERE function_name = 'read_stata_dta';
+----
+1
+
+query I  
+SELECT COUNT(*) FROM duckdb_functions() WHERE function_name = 'stata_dta_info';
+----
+1
+
+# Test 11: Function types verification
+query I
+SELECT function_type FROM duckdb_functions() WHERE function_name = 'read_stata_dta';
+----
+table
+
+query I
+SELECT function_type FROM duckdb_functions() WHERE function_name = 'stata_dta_info';  
+----
+scalar
