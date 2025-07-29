@@ -1,0 +1,358 @@
+# name: test/sql/stata_dta_error_handling.test
+# description: Comprehensive error handling tests for stata_dta extension
+# group: [sql]
+
+require stata_dta
+
+# ===== FILE ACCESS ERROR TESTS =====
+
+# Test 1: Non-existent File
+statement error
+SELECT * FROM read_stata_dta('does_not_exist.dta');
+----
+IO Error: Cannot open Stata file: does_not_exist.dta
+
+# Test 2: Invalid File Path - Absolute Path
+statement error
+SELECT * FROM read_stata_dta('/invalid/absolute/path/file.dta');
+----
+IO Error: Cannot open Stata file: /invalid/absolute/path/file.dta
+
+# Test 3: Invalid File Path - Relative Path
+statement error
+SELECT * FROM read_stata_dta('invalid/relative/path/file.dta');
+----
+IO Error: Cannot open Stata file: invalid/relative/path/file.dta
+
+# Test 4: Directory Instead of File
+statement error
+SELECT * FROM read_stata_dta('test/');
+----
+IO Error: Cannot open Stata file: test/
+
+# Test 5: Directory Instead of File - Absolute
+statement error
+SELECT * FROM read_stata_dta('/Users/');
+----
+IO Error: Cannot open Stata file: /Users/
+
+# Test 6: Empty String Path
+statement error
+SELECT * FROM read_stata_dta('');
+----
+IO Error: Cannot open Stata file: 
+
+# Test 7: NULL File Path
+statement error
+SELECT * FROM read_stata_dta(NULL);
+----
+Conversion Error: NULL value not allowed
+
+# Test 8: Very Long File Path
+statement error
+SELECT * FROM read_stata_dta('this/is/a/very/long/path/that/does/not/exist/and/should/generate/an/error/because/the/file/does/not/exist/file.dta');
+----
+IO Error: Cannot open Stata file: this/is/a/very/long/path/that/does/not/exist/and/should/generate/an/error/because/the/file/does/not/exist/file.dta
+
+# ===== FILE FORMAT ERROR TESTS =====
+
+# Test 9: Non-DTA File (Text File)
+statement error
+SELECT * FROM read_stata_dta('test/README.md');
+----
+IO Error: Cannot open Stata file: test/README.md
+
+# Test 10: Non-DTA File (Binary File)
+# Note: This might succeed in opening but fail in parsing - adjust error message as needed
+statement error
+SELECT * FROM read_stata_dta('CMakeLists.txt');
+----
+IO Error: Cannot open Stata file: CMakeLists.txt
+
+# Test 11: Empty File (0 bytes)
+# Create an empty file for testing - adjust based on actual behavior
+statement error
+SELECT * FROM read_stata_dta('test/data/empty_file.dta');
+----
+IO Error: Cannot open Stata file: test/data/empty_file.dta
+
+# Test 12: Corrupted DTA File Header
+statement error
+SELECT * FROM read_stata_dta('test/data/corrupted_header.dta');
+----
+IO Error: Cannot open Stata file: test/data/corrupted_header.dta
+
+# Test 13: Truncated DTA File
+statement error
+SELECT * FROM read_stata_dta('test/data/truncated.dta');
+----
+IO Error: Cannot open Stata file: test/data/truncated.dta
+
+# ===== PERMISSION ERROR TESTS =====
+
+# Test 14: File Permissions (if we can create such a test file)
+# This might not be easily testable in all environments
+# statement error
+# SELECT * FROM read_stata_dta('test/data/no_permission.dta');
+# ----
+# IO Error: Cannot open Stata file: test/data/no_permission.dta
+
+# ===== PARAMETER VALIDATION TESTS =====
+
+# Test 15: Multiple Arguments (Should Fail)
+statement error
+SELECT * FROM read_stata_dta('test/data/simple.dta', 'extra_param');
+----
+Binder Error: Too many arguments for function
+
+# Test 16: No Arguments (Should Fail)
+statement error
+SELECT * FROM read_stata_dta();
+----
+Binder Error: Too few arguments for function
+
+# Test 17: Wrong Argument Type - Integer
+statement error
+SELECT * FROM read_stata_dta(123);
+----
+Conversion Error: Could not convert INTEGER to VARCHAR
+
+# Test 18: Wrong Argument Type - Float
+statement error
+SELECT * FROM read_stata_dta(123.45);
+----
+Conversion Error: Could not convert DOUBLE to VARCHAR
+
+# Test 19: Wrong Argument Type - Boolean
+statement error
+SELECT * FROM read_stata_dta(TRUE);
+----
+Conversion Error: Could not convert BOOLEAN to VARCHAR
+
+# ===== SCHEMA AND DATA INTEGRITY TESTS =====
+
+# Test 20: File Exists But Has Invalid Stata Format
+# Note: This test depends on having a file that looks like DTA but isn't
+# statement error
+# SELECT * FROM read_stata_dta('test/data/fake_dta.dta');
+# ----
+# IO Error: Invalid Stata file format
+
+# Test 21: Unsupported Stata Version
+# statement error
+# SELECT * FROM read_stata_dta('test/data/version_too_old.dta');
+# ----
+# IO Error: Unsupported Stata file version
+
+# Test 22: Stata File Version Too New
+# statement error
+# SELECT * FROM read_stata_dta('test/data/version_too_new.dta');
+# ----
+# IO Error: Unsupported Stata file version
+
+# ===== MEMORY AND RESOURCE ERROR HANDLING =====
+
+# Test 23: Large File Handling (Should work or give meaningful error)
+# This test verifies that we handle large files gracefully
+statement ok
+SELECT COUNT(*) FROM read_stata_dta('test/data/large_dataset.dta');
+
+# Test 24: Very Wide Dataset (Many Columns)
+# statement ok
+# SELECT COUNT(*) FROM read_stata_dta('test/data/wide_dataset.dta');
+
+# ===== CONCURRENT ACCESS TESTS =====
+
+# Test 25: Multiple Simultaneous Reads (Should Work)
+statement ok
+SELECT COUNT(*) FROM (
+    SELECT * FROM read_stata_dta('test/data/simple.dta')
+    UNION ALL
+    SELECT * FROM read_stata_dta('test/data/simple.dta')
+    UNION ALL
+    SELECT * FROM read_stata_dta('test/data/simple.dta')
+);
+
+# Test 26: Nested Function Calls
+statement ok
+CREATE TABLE nested_test AS SELECT * FROM read_stata_dta('test/data/simple.dta');
+SELECT COUNT(*) FROM nested_test WHERE id IN (
+    SELECT id FROM read_stata_dta('test/data/simple.dta') WHERE age > 25
+);
+DROP TABLE nested_test;
+
+# ===== EDGE CASE ERROR RECOVERY =====
+
+# Test 27: File Path with Special Characters
+statement error
+SELECT * FROM read_stata_dta('test/data/file with spaces.dta');
+----
+IO Error: Cannot open Stata file: test/data/file with spaces.dta
+
+# Test 28: File Path with Unicode Characters
+statement error
+SELECT * FROM read_stata_dta('test/data/файл.dta');
+----
+IO Error: Cannot open Stata file: test/data/файл.dta
+
+# Test 29: Very Long Column Names in File
+# This should either work or give a clear error
+# statement error
+# SELECT * FROM read_stata_dta('test/data/long_column_names.dta');
+# ----
+# IO Error: Column name too long
+
+# Test 30: Extremely Long String Values
+# This should either work or give a clear error
+# statement ok
+# SELECT * FROM read_stata_dta('test/data/long_strings.dta') LIMIT 1;
+
+# ===== FUNCTION PARAMETER EDGE CASES =====
+
+# Test 31: File Path Starting with Special Characters
+statement error
+SELECT * FROM read_stata_dta('./nonexistent.dta');
+----
+IO Error: Cannot open Stata file: ./nonexistent.dta
+
+statement error
+SELECT * FROM read_stata_dta('../nonexistent.dta');
+----
+IO Error: Cannot open Stata file: ../nonexistent.dta
+
+statement error
+SELECT * FROM read_stata_dta('~/nonexistent.dta');
+----
+IO Error: Cannot open Stata file: ~/nonexistent.dta
+
+# Test 32: Path with Only Whitespace
+statement error
+SELECT * FROM read_stata_dta('   ');
+----
+IO Error: Cannot open Stata file:    
+
+# Test 33: Path with Newline Characters
+statement error
+SELECT * FROM read_stata_dta('test/data/simple.dta
+');
+----
+IO Error: Cannot open Stata file: test/data/simple.dta
+
+# Test 34: Path with Tab Characters
+statement error
+SELECT * FROM read_stata_dta('test/data/	simple.dta');
+----
+IO Error: Cannot open Stata file: test/data/	simple.dta
+
+# ===== SQL CONTEXT ERROR TESTS =====
+
+# Test 35: Using Function in Invalid Context
+statement error
+UPDATE read_stata_dta('test/data/simple.dta') SET age = 30;
+----
+Parser Error: syntax error
+
+# Test 36: Using Function as Scalar (Should Fail)
+statement error
+SELECT read_stata_dta('test/data/simple.dta');
+----
+Binder Error: Table function is used incorrectly
+
+# Test 37: Invalid Column Reference in WHERE
+statement error
+SELECT * FROM read_stata_dta('test/data/simple.dta') WHERE nonexistent_column = 1;
+----
+Binder Error: Referenced column "nonexistent_column" not found
+
+# ===== CLEANUP AND STATE CONSISTENCY TESTS =====
+
+# Test 38: Error Recovery - File Access After Error
+# After an error, subsequent valid calls should still work
+statement error
+SELECT * FROM read_stata_dta('nonexistent.dta');
+----
+IO Error: Cannot open Stata file: nonexistent.dta
+
+# This should work fine after the previous error
+statement ok
+SELECT COUNT(*) FROM read_stata_dta('test/data/simple.dta');
+
+# Test 39: Multiple Errors in Same Query
+statement error
+SELECT * FROM read_stata_dta('nonexistent1.dta')
+UNION ALL
+SELECT * FROM read_stata_dta('nonexistent2.dta');
+----
+IO Error: Cannot open Stata file: nonexistent1.dta
+
+# Test 40: Error in Complex Query Context
+statement error
+SELECT * FROM (
+    SELECT id, name, age
+    FROM read_stata_dta('nonexistent.dta')
+    WHERE age > 25
+) subquery
+ORDER BY name;
+----
+IO Error: Cannot open Stata file: nonexistent.dta
+
+# ===== ERROR MESSAGE QUALITY TESTS =====
+
+# Test 41: Verify Error Messages Are Helpful
+# The error messages should be descriptive and actionable
+
+statement error
+SELECT * FROM read_stata_dta('test/data/definitely_does_not_exist.dta');
+----
+IO Error: Cannot open Stata file: test/data/definitely_does_not_exist.dta
+
+# Test 42: File Name Preserved in Error Message
+statement error
+SELECT * FROM read_stata_dta('my_custom_filename.dta');
+----
+IO Error: Cannot open Stata file: my_custom_filename.dta
+
+# Test 43: Path Information Preserved in Error Message
+statement error
+SELECT * FROM read_stata_dta('custom/path/to/file.dta');
+----
+IO Error: Cannot open Stata file: custom/path/to/file.dta
+
+# ===== RESOURCE CLEANUP VERIFICATION =====
+
+# Test 44: Ensure Resources Are Cleaned Up After Errors
+# Multiple failed attempts should not exhaust resources
+statement error
+SELECT * FROM read_stata_dta('err1.dta');
+----
+IO Error: Cannot open Stata file: err1.dta
+
+statement error
+SELECT * FROM read_stata_dta('err2.dta');
+----
+IO Error: Cannot open Stata file: err2.dta
+
+statement error
+SELECT * FROM read_stata_dta('err3.dta');
+----
+IO Error: Cannot open Stata file: err3.dta
+
+# This should still work fine
+statement ok
+SELECT COUNT(*) FROM read_stata_dta('test/data/simple.dta');
+
+# Test 45: Error Handling in Transaction Context
+statement ok
+BEGIN;
+
+statement error
+SELECT * FROM read_stata_dta('tx_error.dta');
+----
+IO Error: Cannot open Stata file: tx_error.dta
+
+# Transaction should still be valid for other operations
+statement ok
+SELECT COUNT(*) FROM read_stata_dta('test/data/simple.dta');
+
+statement ok
+ROLLBACK;

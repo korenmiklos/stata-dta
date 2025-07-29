@@ -1,0 +1,364 @@
+# name: test/sql/stata_dta_version_compatibility.test
+# description: Stata version compatibility tests for stata_dta extension
+# group: [sql]
+
+require stata_dta
+
+# ===== STATA VERSION COMPATIBILITY TESTS =====
+
+# Stata file format versions supported:
+# - 105: Stata 7SE
+# - 108: Early versions  
+# - 111: Stata 7SE  
+# - 113: Stata 8/9
+# - 114: Stata 10/11
+# - 115: Stata 12
+# - 117: Stata 13
+# - 118: Stata 14/15/16
+# - 119: Stata 15/16+ (>32K variables)
+
+# Test 1: Version 114 (Stata 10/11) - Basic Read
+statement ok
+SELECT * FROM read_stata_dta('test/data/version_114.dta');
+
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/version_114.dta');
+----
+3
+
+# Test 2: Version 117 (Stata 13) - Unicode Support
+statement ok
+SELECT * FROM read_stata_dta('test/data/version_117.dta');
+
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/version_117.dta');
+----
+3
+
+# Test 3: Version 118 (Stata 14/15/16) - Large Datasets
+statement ok
+SELECT * FROM read_stata_dta('test/data/version_118.dta');
+
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/version_118.dta');
+----
+3
+
+# Test 4: Cross-Version Data Consistency
+# All versions should read the same logical data
+query I
+SELECT 
+    (SELECT COUNT(*) FROM read_stata_dta('test/data/version_114.dta')) =
+    (SELECT COUNT(*) FROM read_stata_dta('test/data/version_117.dta')) AND
+    (SELECT COUNT(*) FROM read_stata_dta('test/data/version_117.dta')) =
+    (SELECT COUNT(*) FROM read_stata_dta('test/data/version_118.dta'));
+----
+true
+
+# Test 5: Column Names Consistency Across Versions
+statement ok
+CREATE TABLE v114_cols AS SELECT column_name FROM (DESCRIBE SELECT * FROM read_stata_dta('test/data/version_114.dta')) ORDER BY column_name;
+CREATE TABLE v117_cols AS SELECT column_name FROM (DESCRIBE SELECT * FROM read_stata_dta('test/data/version_117.dta')) ORDER BY column_name;
+CREATE TABLE v118_cols AS SELECT column_name FROM (DESCRIBE SELECT * FROM read_stata_dta('test/data/version_118.dta')) ORDER BY column_name;
+
+# Test 6: Column Count Should Be Same Across Versions
+query I
+SELECT 
+    (SELECT COUNT(*) FROM v114_cols) = 
+    (SELECT COUNT(*) FROM v117_cols) AND
+    (SELECT COUNT(*) FROM v117_cols) = 
+    (SELECT COUNT(*) FROM v118_cols);
+----
+true
+
+statement ok
+DROP TABLE v114_cols;
+DROP TABLE v117_cols;
+DROP TABLE v118_cols;
+
+# Test 7: Data Type Consistency Across Versions
+statement ok
+CREATE TABLE v114_types AS SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM read_stata_dta('test/data/version_114.dta')) ORDER BY column_name;
+CREATE TABLE v117_types AS SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM read_stata_dta('test/data/version_117.dta')) ORDER BY column_name;
+
+# Test 8: Type Mapping Should Be Consistent
+query I
+SELECT COUNT(*) FROM v114_types v1
+JOIN v117_types v2 ON v1.column_name = v2.column_name AND v1.column_type = v2.column_type;
+----
+3
+
+statement ok
+DROP TABLE v114_types;
+DROP TABLE v117_types;
+
+# Test 9: Version 114 - Specific Data Type Tests
+query I
+SELECT typeof(id) FROM read_stata_dta('test/data/version_114.dta') LIMIT 1;
+----
+INTEGER
+
+query I
+SELECT typeof(name) FROM read_stata_dta('test/data/version_114.dta') LIMIT 1;
+----
+VARCHAR
+
+query I
+SELECT typeof(value) FROM read_stata_dta('test/data/version_114.dta') LIMIT 1;
+----
+DOUBLE
+
+# Test 10: Version 117 - Enhanced String Support
+query I
+SELECT MAX(LENGTH(name)) FROM read_stata_dta('test/data/version_117.dta') WHERE name IS NOT NULL;
+----
+7
+
+# Test 11: Version 118 - Large Dataset Capability
+query I
+SELECT COUNT(DISTINCT id) FROM read_stata_dta('test/data/version_118.dta');
+----
+3
+
+# Test 12: Missing Value Handling Across Versions
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/version_114.dta') WHERE value IS NULL;
+----
+0
+
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/version_117.dta') WHERE value IS NULL;
+----
+0
+
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/version_118.dta') WHERE value IS NULL;
+----
+0
+
+# Test 13: String Length Limits by Version
+# Older versions have more restrictive string limits
+query I
+SELECT MAX(LENGTH(name)) <= 244 FROM read_stata_dta('test/data/version_114.dta') WHERE name IS NOT NULL;
+----
+true
+
+query I
+SELECT MAX(LENGTH(name)) <= 244 FROM read_stata_dta('test/data/version_117.dta') WHERE name IS NOT NULL;
+----
+true
+
+# Test 14: Numeric Range Validation Across Versions
+query II
+SELECT MIN(id), MAX(id) FROM read_stata_dta('test/data/version_114.dta');
+----
+1	3
+
+query II
+SELECT MIN(id), MAX(id) FROM read_stata_dta('test/data/version_117.dta');
+----
+1	3
+
+query II
+SELECT MIN(id), MAX(id) FROM read_stata_dta('test/data/version_118.dta');
+----
+1	3
+
+# Test 15: Byte Order Handling (Should work transparently)
+# Modern versions support both big-endian and little-endian
+statement ok
+SELECT * FROM read_stata_dta('test/data/version_117.dta') 
+UNION ALL
+SELECT * FROM read_stata_dta('test/data/version_118.dta');
+
+# Test 16: Character Encoding Support
+# Version 117+ should support Unicode properly
+query I
+SELECT LENGTH(name) FROM read_stata_dta('test/data/version_117.dta') WHERE id = 1;
+----
+4
+
+# Test 17: Variable Limit Tests
+# Older versions have fewer variable limits
+query I
+SELECT COUNT(*) FROM (DESCRIBE SELECT * FROM read_stata_dta('test/data/version_114.dta'));
+----
+3
+
+query I
+SELECT COUNT(*) FROM (DESCRIBE SELECT * FROM read_stata_dta('test/data/version_118.dta'));
+----
+3
+
+# Test 18: Cross-Version JOIN Test
+query III
+SELECT v1.id, v1.name, v2.value
+FROM read_stata_dta('test/data/version_114.dta') v1
+JOIN read_stata_dta('test/data/version_117.dta') v2 ON v1.id = v2.id
+ORDER BY v1.id;
+----
+1	John	10.5
+2	Jane	20.3
+3	Bob	15.7
+
+# Test 19: Version-Specific Error Handling
+# All versions should give similar error messages for missing files
+statement error
+SELECT * FROM read_stata_dta('test/data/nonexistent_114.dta');
+----
+IO Error: Cannot open Stata file: test/data/nonexistent_114.dta
+
+statement error
+SELECT * FROM read_stata_dta('test/data/nonexistent_117.dta');
+----
+IO Error: Cannot open Stata file: test/data/nonexistent_117.dta
+
+# Test 20: Performance Comparison Across Versions
+# All versions should have similar read performance for same data size
+statement ok
+CREATE TABLE perf_114 AS SELECT * FROM read_stata_dta('test/data/version_114.dta');
+CREATE TABLE perf_117 AS SELECT * FROM read_stata_dta('test/data/version_117.dta');
+CREATE TABLE perf_118 AS SELECT * FROM read_stata_dta('test/data/version_118.dta');
+
+query I
+SELECT COUNT(*) FROM perf_114 
+UNION ALL SELECT COUNT(*) FROM perf_117 
+UNION ALL SELECT COUNT(*) FROM perf_118;
+----
+3
+3
+3
+
+statement ok
+DROP TABLE perf_114;
+DROP TABLE perf_117;
+DROP TABLE perf_118;
+
+# ===== VERSION-SPECIFIC FEATURE TESTS =====
+
+# Test 21: Version 114 - Basic Feature Set
+query III
+SELECT id, name, value FROM read_stata_dta('test/data/version_114.dta') ORDER BY id;
+----
+1	John	10.5
+2	Jane	20.3
+3	Bob	15.7
+
+# Test 22: Version 117 - Unicode String Support
+# Should handle international characters properly
+statement ok
+SELECT * FROM read_stata_dta('test/data/version_117.dta') WHERE name LIKE '%o%';
+
+# Test 23: Version 118 - Extended Variable Support
+# Should support larger numbers of variables and observations
+statement ok
+SELECT COUNT(*) FROM read_stata_dta('test/data/version_118.dta');
+
+# Test 24: Backward Compatibility Test
+# Reading newer format files should work with same API
+statement ok
+CREATE TABLE compatibility_test AS
+    SELECT 'v114' as version, COUNT(*) as count FROM read_stata_dta('test/data/version_114.dta')
+    UNION ALL
+    SELECT 'v117', COUNT(*) FROM read_stata_dta('test/data/version_117.dta')
+    UNION ALL
+    SELECT 'v118', COUNT(*) FROM read_stata_dta('test/data/version_118.dta');
+
+query TI
+SELECT version, count FROM compatibility_test ORDER BY version;
+----
+v114	3
+v117	3
+v118	3
+
+statement ok
+DROP TABLE compatibility_test;
+
+# Test 25: Version Detection Robustness
+# Extension should automatically detect version without user input
+statement ok
+SELECT * FROM read_stata_dta('test/data/version_114.dta')
+UNION ALL
+SELECT * FROM read_stata_dta('test/data/version_117.dta')
+UNION ALL  
+SELECT * FROM read_stata_dta('test/data/version_118.dta');
+
+# ===== EDGE CASES FOR VERSION COMPATIBILITY =====
+
+# Test 26: Mixed Version Reading in Same Query
+query I
+SELECT COUNT(*) FROM (
+    SELECT id FROM read_stata_dta('test/data/version_114.dta')
+    UNION
+    SELECT id FROM read_stata_dta('test/data/version_117.dta')
+    UNION
+    SELECT id FROM read_stata_dta('test/data/version_118.dta')
+);
+----
+3
+
+# Test 27: Version-Specific Numeric Precision
+query R
+SELECT AVG(value) FROM read_stata_dta('test/data/version_114.dta');
+----
+15.5
+
+query R
+SELECT AVG(value) FROM read_stata_dta('test/data/version_117.dta');
+----
+15.5
+
+query R
+SELECT AVG(value) FROM read_stata_dta('test/data/version_118.dta');
+----
+15.5
+
+# Test 28: String Comparison Across Versions
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/version_114.dta') v1
+JOIN read_stata_dta('test/data/version_117.dta') v2 
+ON v1.name = v2.name;
+----
+3
+
+# Test 29: NULL Handling Consistency Across Versions
+statement ok
+CREATE TABLE null_test_114 AS SELECT * FROM read_stata_dta('test/data/version_114.dta') WHERE value IS NULL;
+CREATE TABLE null_test_117 AS SELECT * FROM read_stata_dta('test/data/version_117.dta') WHERE value IS NULL;
+
+query I
+SELECT (SELECT COUNT(*) FROM null_test_114) = (SELECT COUNT(*) FROM null_test_117);
+----
+true
+
+statement ok
+DROP TABLE null_test_114;
+DROP TABLE null_test_117;
+
+# Test 30: Schema Consistency Final Verification
+statement ok
+CREATE TABLE schema_check AS
+    SELECT 'v114' as version, column_name, column_type FROM (DESCRIBE SELECT * FROM read_stata_dta('test/data/version_114.dta'))
+    UNION ALL
+    SELECT 'v117', column_name, column_type FROM (DESCRIBE SELECT * FROM read_stata_dta('test/data/version_117.dta'))
+    UNION ALL
+    SELECT 'v118', column_name, column_type FROM (DESCRIBE SELECT * FROM read_stata_dta('test/data/version_118.dta'));
+
+# All versions should have identical schemas for the test data
+query I
+SELECT COUNT(DISTINCT column_type) FROM schema_check WHERE column_name = 'id';
+----
+1
+
+query I
+SELECT COUNT(DISTINCT column_type) FROM schema_check WHERE column_name = 'name';
+----
+1
+
+query I
+SELECT COUNT(DISTINCT column_type) FROM schema_check WHERE column_name = 'value';
+----
+1
+
+statement ok
+DROP TABLE schema_check;

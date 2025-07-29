@@ -1,0 +1,501 @@
+# name: test/sql/stata_dta_unit_tests.test
+# description: Comprehensive unit tests for stata_dta extension based on pandas test suite
+# group: [sql]
+
+require stata_dta
+
+# ===== BASIC FUNCTIONALITY TESTS =====
+
+# Test 1: Extension Info Function
+query I
+SELECT stata_dta_info('v1.0') ILIKE 'Stata DTA Extension v1.0%';
+----
+true
+
+# Test 2: Non-existent File Error
+statement error
+SELECT * FROM read_stata_dta('nonexistent_file.dta');
+----
+IO Error: Cannot open Stata file: nonexistent_file.dta
+
+# Test 3: Empty Dataset Reading
+statement ok
+SELECT * FROM read_stata_dta('test/data/empty.dta');
+
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/empty.dta');
+----
+0
+
+# Test 4: Simple Dataset Reading
+query III
+SELECT * FROM read_stata_dta('test/data/simple.dta') ORDER BY id;
+----
+1	John	25.5
+2	Jane	30.0
+3	Bob	NULL
+4	Alice	22.8
+5	Charlie	28.3
+
+# Test 5: Row Count Verification
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/simple.dta');
+----
+5
+
+# Test 6: Column Names and Types
+query I
+SELECT COUNT(*) FROM (
+    DESCRIBE SELECT * FROM read_stata_dta('test/data/simple.dta')
+) WHERE column_name IN ('id', 'name', 'age');
+----
+3
+
+# ===== DATA TYPE CONVERSION TESTS =====
+
+# Test 7: Mixed Data Types Reading
+statement ok
+SELECT * FROM read_stata_dta('test/data/mixed_types.dta');
+
+# Test 8: Integer Types - Byte (int8)
+query I
+SELECT typeof(byte_col) FROM read_stata_dta('test/data/mixed_types.dta') LIMIT 1;
+----
+TINYINT
+
+# Test 9: Integer Types - Int (int16) 
+query I
+SELECT typeof(int_col) FROM read_stata_dta('test/data/mixed_types.dta') LIMIT 1;
+----
+SMALLINT
+
+# Test 10: Integer Types - Long (int32)
+query I
+SELECT typeof(long_col) FROM read_stata_dta('test/data/mixed_types.dta') LIMIT 1;
+----
+INTEGER
+
+# Test 11: Float Types - Float (float32)
+query I
+SELECT typeof(float_col) FROM read_stata_dta('test/data/mixed_types.dta') LIMIT 1;
+----
+FLOAT
+
+# Test 12: Float Types - Double (float64)
+query I
+SELECT typeof(double_col) FROM read_stata_dta('test/data/mixed_types.dta') LIMIT 1;
+----
+DOUBLE
+
+# Test 13: String Types
+query I
+SELECT typeof(string_col) FROM read_stata_dta('test/data/mixed_types.dta') LIMIT 1;
+----
+VARCHAR
+
+# Test 14: Value Range Validation - Byte (signed int8: -127 to 100)
+query II
+SELECT MIN(byte_col), MAX(byte_col) 
+FROM read_stata_dta('test/data/mixed_types.dta') 
+WHERE byte_col IS NOT NULL;
+----
+-127	100
+
+# Test 15: Value Range Validation - Int (signed int16: -32767 to 32740)
+query II
+SELECT MIN(int_col) >= -32767, MAX(int_col) <= 32740
+FROM read_stata_dta('test/data/mixed_types.dta')
+WHERE int_col IS NOT NULL;
+----
+true	true
+
+# Test 16: Value Range Validation - Long (signed int32)
+query II
+SELECT MIN(long_col) >= -2147483647, MAX(long_col) <= 2147483620
+FROM read_stata_dta('test/data/mixed_types.dta')
+WHERE long_col IS NOT NULL;
+----
+true	true
+
+# ===== MISSING VALUE HANDLING TESTS =====
+
+# Test 17: NULL Values Detection
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/with_missing.dta') 
+WHERE age IS NULL;
+----
+2
+
+# Test 18: Missing Values in Different Data Types
+statement ok
+SELECT * FROM read_stata_dta('test/data/with_missing.dta') 
+WHERE byte_missing IS NULL OR int_missing IS NULL OR long_missing IS NULL;
+
+# Test 19: Missing Float Values
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/with_missing.dta') 
+WHERE float_missing IS NULL;
+----
+1
+
+# Test 20: Missing Double Values
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/with_missing.dta') 
+WHERE double_missing IS NULL;
+----
+1
+
+# Test 21: Missing String Values
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/with_missing.dta') 
+WHERE string_missing IS NULL OR string_missing = '';
+----
+2
+
+# Test 22: Non-Missing Values Count
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/with_missing.dta') 
+WHERE age IS NOT NULL;
+----
+3
+
+# ===== VERSION COMPATIBILITY TESTS =====
+
+# Test 23: Stata Version 114 Compatibility
+statement ok
+SELECT * FROM read_stata_dta('test/data/version_114.dta');
+
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/version_114.dta');
+----
+3
+
+# Test 24: Stata Version 117 Compatibility  
+statement ok
+SELECT * FROM read_stata_dta('test/data/version_117.dta');
+
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/version_117.dta');
+----
+3
+
+# Test 25: Stata Version 118 Compatibility
+statement ok
+SELECT * FROM read_stata_dta('test/data/version_118.dta');
+
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/version_118.dta');
+----
+3
+
+# Test 26: All Versions Should Have Same Data Structure
+query I
+SELECT 
+  (SELECT COUNT(*) FROM read_stata_dta('test/data/version_114.dta')) =
+  (SELECT COUNT(*) FROM read_stata_dta('test/data/version_117.dta')) AND
+  (SELECT COUNT(*) FROM read_stata_dta('test/data/version_117.dta')) =
+  (SELECT COUNT(*) FROM read_stata_dta('test/data/version_118.dta'));
+----
+true
+
+# ===== STRING HANDLING TESTS ===== 
+
+# Test 27: Variable Length Strings
+statement ok
+SELECT * FROM read_stata_dta('test/data/string_lengths.dta');
+
+# Test 28: Short Strings (str1-str80)
+query I
+SELECT LENGTH(short_str) FROM read_stata_dta('test/data/string_lengths.dta') 
+WHERE short_str IS NOT NULL;
+----
+5
+
+# Test 29: Long Strings (str81-str244)
+query I
+SELECT MAX(LENGTH(long_str)) FROM read_stata_dta('test/data/string_lengths.dta') 
+WHERE long_str IS NOT NULL;
+----
+200
+
+# Test 30: Empty Strings vs NULL
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/string_lengths.dta') 
+WHERE empty_str = '';
+----
+1
+
+# Test 31: Special Characters in Strings
+statement ok
+SELECT * FROM read_stata_dta('test/data/special_chars.dta') 
+WHERE special_chars LIKE '%ñáéíóú%';
+
+# ===== ERROR HANDLING TESTS =====
+
+# Test 32: Invalid File Path
+statement error
+SELECT * FROM read_stata_dta('/invalid/path/file.dta');
+----
+IO Error: Cannot open Stata file: /invalid/path/file.dta
+
+# Test 33: Non-DTA File Extension (should still try to read)
+statement error
+SELECT * FROM read_stata_dta('test/data/simple.txt');
+----
+IO Error: Cannot open Stata file: test/data/simple.txt
+
+# Test 34: Directory Instead of File
+statement error
+SELECT * FROM read_stata_dta('test/data/');
+----
+IO Error: Cannot open Stata file: test/data/
+
+# Test 35: NULL File Path
+statement error
+SELECT * FROM read_stata_dta(NULL);
+----
+Conversion Error: NULL value not allowed
+
+# Test 36: Empty String File Path
+statement error
+SELECT * FROM read_stata_dta('');
+----
+IO Error: Cannot open Stata file: 
+
+# ===== SQL INTEGRATION TESTS =====
+
+# Test 37: WHERE Clauses
+query II
+SELECT id, name FROM read_stata_dta('test/data/simple.dta') 
+WHERE age > 25 ORDER BY id;
+----
+1	John
+2	Jane
+5	Charlie
+
+# Test 38: JOIN Operations
+statement ok
+CREATE TABLE lookup AS SELECT 1 as id, 'Engineer' as job
+UNION SELECT 2, 'Doctor' 
+UNION SELECT 3, 'Teacher';
+
+query III
+SELECT s.id, s.name, l.job 
+FROM read_stata_dta('test/data/simple.dta') s
+LEFT JOIN lookup l ON s.id = l.id
+ORDER BY s.id LIMIT 3;
+----
+1	John	Engineer
+2	Jane	Doctor
+3	Bob	Teacher
+
+statement ok
+DROP TABLE lookup;
+
+# Test 39: Aggregation Functions
+query IIIR
+SELECT 
+    COUNT(*) as total_rows,
+    COUNT(age) as non_null_ages, 
+    COUNT(*) - COUNT(age) as null_ages,
+    AVG(age) as avg_age
+FROM read_stata_dta('test/data/simple.dta');
+----
+5	4	1	26.65
+
+# Test 40: GROUP BY Operations
+query II
+SELECT 
+    CASE WHEN age < 30 THEN 'Young' ELSE 'Adult' END as age_group,
+    COUNT(*) as count
+FROM read_stata_dta('test/data/simple.dta')
+WHERE age IS NOT NULL
+GROUP BY CASE WHEN age < 30 THEN 'Young' ELSE 'Adult' END
+ORDER BY age_group;
+----
+Adult	2
+Young	2
+
+# Test 41: ORDER BY Different Columns
+query III
+SELECT id, name, age FROM read_stata_dta('test/data/simple.dta') 
+ORDER BY name;
+----
+4	Alice	22.8
+3	Bob	NULL
+5	Charlie	28.3
+2	Jane	30.0
+1	John	25.5
+
+# Test 42: LIMIT and OFFSET
+query II
+SELECT id, name FROM read_stata_dta('test/data/simple.dta') 
+ORDER BY id LIMIT 2 OFFSET 1;
+----
+2	Jane
+3	Bob
+
+# ===== CHUNKED READING TESTS =====
+
+# Test 43: Large Dataset Performance
+statement ok
+SELECT COUNT(*) FROM read_stata_dta('test/data/large_dataset.dta');
+
+# Test 44: Large Dataset Sample Verification
+query I
+SELECT COUNT(*) > 1000 FROM read_stata_dta('test/data/large_dataset.dta');
+----
+true
+
+# ===== EDGE CASES TESTS =====
+
+# Test 45: Zero-Observation File
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/empty.dta');
+----
+0
+
+# Test 46: Single Row File
+statement ok
+CREATE TABLE single_row AS SELECT * FROM read_stata_dta('test/data/simple.dta') LIMIT 1;
+
+query I
+SELECT COUNT(*) FROM single_row;
+----
+1
+
+statement ok
+DROP TABLE single_row;
+
+# Test 47: Maximum String Length (244 characters)
+query I
+SELECT MAX(LENGTH(max_str)) <= 244 FROM read_stata_dta('test/data/string_lengths.dta')
+WHERE max_str IS NOT NULL;
+----
+true
+
+# Test 48: Numerical Precision - Float vs Double
+query I
+SELECT typeof(CAST(float_col AS DOUBLE)) FROM read_stata_dta('test/data/mixed_types.dta') LIMIT 1;
+----
+DOUBLE
+
+# Test 49: Boolean-like Integer Values (0/1)
+query II
+SELECT MIN(binary_col), MAX(binary_col) FROM read_stata_dta('test/data/mixed_types.dta')
+WHERE binary_col IS NOT NULL;
+----
+0	1
+
+# Test 50: Case Sensitivity in Column Names
+statement ok
+SELECT ID, Name, AGE FROM read_stata_dta('test/data/simple.dta') LIMIT 1;
+
+# ===== METADATA TESTS =====
+
+# Test 51: Schema Information
+statement ok
+DESCRIBE SELECT * FROM read_stata_dta('test/data/simple.dta');
+
+# Test 52: Column Count Verification
+query I
+SELECT COUNT(*) FROM (
+    DESCRIBE SELECT * FROM read_stata_dta('test/data/mixed_types.dta')
+);
+----
+8
+
+# Test 53: Data Type Consistency Across Reads
+statement ok
+CREATE TABLE first_read AS SELECT * FROM read_stata_dta('test/data/simple.dta');
+CREATE TABLE second_read AS SELECT * FROM read_stata_dta('test/data/simple.dta');
+
+query I
+SELECT (SELECT COUNT(*) FROM first_read) = (SELECT COUNT(*) FROM second_read);
+----
+true
+
+statement ok
+DROP TABLE first_read;
+DROP TABLE second_read;
+
+# ===== REGRESSION TESTS =====
+
+# Test 54: Consistent Results Across Multiple Reads
+statement ok
+CREATE TABLE consistency_test AS 
+    SELECT id, name, age,
+           ROW_NUMBER() OVER (ORDER BY id) as rn
+    FROM read_stata_dta('test/data/simple.dta');
+
+query I
+SELECT COUNT(*) FROM consistency_test WHERE rn <= 5;
+----
+5
+
+statement ok  
+DROP TABLE consistency_test;
+
+# Test 55: Memory Usage - Reading Same File Multiple Times
+statement ok
+SELECT * FROM read_stata_dta('test/data/simple.dta')
+UNION ALL
+SELECT * FROM read_stata_dta('test/data/simple.dta')
+UNION ALL  
+SELECT * FROM read_stata_dta('test/data/simple.dta');
+
+# ===== COMPATIBILITY BOUNDARY TESTS =====
+
+# Test 56: Minimum Stata Version Support (Version 105)
+# Note: This would fail if we don't have version 105 test data
+# statement ok
+# SELECT * FROM read_stata_dta('test/data/version_105.dta');
+
+# Test 57: Maximum Supported Values
+query I
+SELECT MAX(long_col) < 2147483647 FROM read_stata_dta('test/data/mixed_types.dta')
+WHERE long_col IS NOT NULL;
+----
+true
+
+# Test 58: Minimum Supported Values  
+query I
+SELECT MIN(byte_col) >= -127 FROM read_stata_dta('test/data/mixed_types.dta')
+WHERE byte_col IS NOT NULL;
+----
+true
+
+# Test 59: Float Precision Boundaries
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/mixed_types.dta')
+WHERE float_col BETWEEN -3.4e38 AND 3.4e38;
+----
+5
+
+# Test 60: Double Precision Boundaries
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/mixed_types.dta')
+WHERE double_col BETWEEN -1.7e308 AND 1.7e308;
+----
+5
+
+# ===== FINAL INTEGRATION TEST =====
+
+# Test 61: Complex Query with All Features
+query ITRR
+SELECT 
+    COUNT(*) as total_records,
+    COALESCE(name, 'Unknown') as name_with_default,
+    AVG(COALESCE(age, 0)) as avg_age_with_zero,
+    STDDEV(age) as age_stddev
+FROM read_stata_dta('test/data/simple.dta')
+GROUP BY COALESCE(name, 'Unknown')
+HAVING COUNT(*) > 0
+ORDER BY name_with_default
+LIMIT 10;
+----
+1	Alice	22.8	NULL
+1	Bob	0.0	NULL
+1	Charlie	28.3	NULL
+1	Jane	30.0	NULL
+1	John	25.5	NULL

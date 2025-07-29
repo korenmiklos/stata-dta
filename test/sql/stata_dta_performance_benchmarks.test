@@ -1,0 +1,405 @@
+# name: test/sql/stata_dta_performance_benchmarks.test
+# description: Performance and benchmarking tests for stata_dta extension
+# group: [sql]
+
+require stata_dta
+
+# ===== BASIC PERFORMANCE TESTS =====
+
+# Test 1: Small File Read Performance
+# Should be near-instantaneous for small files
+statement ok
+SELECT COUNT(*) FROM read_stata_dta('test/data/simple.dta');
+
+# Test 2: Medium File Read Performance  
+# Should complete reasonably quickly
+statement ok
+SELECT COUNT(*) FROM read_stata_dta('test/data/mixed_types.dta');
+
+# Test 3: Large File Read Performance
+# Should handle large files without memory issues
+statement ok
+SELECT COUNT(*) FROM read_stata_dta('test/data/large_dataset.dta');
+
+query I
+SELECT COUNT(*) > 1000 FROM read_stata_dta('test/data/large_dataset.dta');
+----
+true
+
+# Test 4: Wide Dataset Performance (Many Columns)
+# Should handle files with many columns efficiently
+statement ok
+SELECT * FROM read_stata_dta('test/data/mixed_types.dta') LIMIT 1;
+
+# Test 5: Memory Usage - Large File Chunked Reading
+# Should maintain constant memory usage regardless of file size
+statement ok
+CREATE TABLE memory_test AS SELECT * FROM read_stata_dta('test/data/large_dataset.dta') LIMIT 100;
+
+query I
+SELECT COUNT(*) FROM memory_test;
+----
+100
+
+statement ok
+DROP TABLE memory_test;
+
+# ===== SCALABILITY TESTS =====
+
+# Test 6: Multiple Concurrent Reads
+# Should handle multiple simultaneous reads efficiently
+statement ok
+SELECT COUNT(*) FROM (
+    SELECT * FROM read_stata_dta('test/data/simple.dta') s1
+    CROSS JOIN read_stata_dta('test/data/simple.dta') s2
+    WHERE s1.id = s2.id
+);
+
+# Test 7: Repeated File Access
+# Should cache or efficiently handle repeated access to same file
+statement ok
+CREATE TABLE repeat_test AS
+    SELECT 'read1' as source, COUNT(*) as count FROM read_stata_dta('test/data/simple.dta')
+    UNION ALL
+    SELECT 'read2', COUNT(*) FROM read_stata_dta('test/data/simple.dta')
+    UNION ALL
+    SELECT 'read3', COUNT(*) FROM read_stata_dta('test/data/simple.dta');
+
+query TI
+SELECT source, count FROM repeat_test ORDER BY source;
+----
+read1	5
+read2	5
+read3	5
+
+statement ok
+DROP TABLE repeat_test;
+
+# Test 8: Large JOIN Performance
+# Should efficiently handle joins with large datasets
+statement ok
+CREATE TABLE join_test AS
+SELECT l1.id, l1.name, l2.age
+FROM read_stata_dta('test/data/large_dataset.dta') l1
+JOIN read_stata_dta('test/data/large_dataset.dta') l2 ON l1.id = l2.id
+LIMIT 100;
+
+query I
+SELECT COUNT(*) FROM join_test;
+----
+100
+
+statement ok
+DROP TABLE join_test;
+
+# ===== AGGREGATION PERFORMANCE TESTS =====
+
+# Test 9: COUNT Performance on Large Dataset
+statement ok
+SELECT COUNT(*) FROM read_stata_dta('test/data/large_dataset.dta');
+
+# Test 10: SUM Performance on Large Dataset
+statement ok
+SELECT SUM(id) FROM read_stata_dta('test/data/large_dataset.dta');
+
+# Test 11: AVG Performance on Large Dataset
+statement ok
+SELECT AVG(CAST(id AS DOUBLE)) FROM read_stata_dta('test/data/large_dataset.dta');
+
+# Test 12: GROUP BY Performance
+statement ok
+CREATE TABLE group_perf AS
+SELECT 
+    id % 10 as group_key,
+    COUNT(*) as count,
+    AVG(CAST(id AS DOUBLE)) as avg_id
+FROM read_stata_dta('test/data/large_dataset.dta')
+GROUP BY id % 10
+ORDER BY group_key;
+
+query I
+SELECT COUNT(*) FROM group_perf;
+----
+10
+
+statement ok
+DROP TABLE group_perf;
+
+# ===== FILTERING PERFORMANCE TESTS =====
+
+# Test 13: WHERE Clause Performance
+statement ok
+SELECT COUNT(*) FROM read_stata_dta('test/data/large_dataset.dta') 
+WHERE id > 100;
+
+# Test 14: Complex WHERE Clause Performance
+statement ok
+SELECT COUNT(*) FROM read_stata_dta('test/data/large_dataset.dta')
+WHERE id BETWEEN 100 AND 1000 AND name IS NOT NULL;
+
+# Test 15: String Filtering Performance
+statement ok
+SELECT COUNT(*) FROM read_stata_dta('test/data/large_dataset.dta')
+WHERE name LIKE 'A%';
+
+# Test 16: Multiple Conditions Performance
+statement ok
+SELECT COUNT(*) FROM read_stata_dta('test/data/large_dataset.dta')
+WHERE id > 50 AND id < 500 AND name IS NOT NULL AND name != '';
+
+# ===== SORTING PERFORMANCE TESTS =====
+
+# Test 17: ORDER BY Performance - Numeric Column
+statement ok
+CREATE TABLE sort_numeric AS
+SELECT * FROM read_stata_dta('test/data/large_dataset.dta')
+ORDER BY id
+LIMIT 100;
+
+query I
+SELECT COUNT(*) FROM sort_numeric;
+----
+100
+
+statement ok
+DROP TABLE sort_numeric;
+
+# Test 18: ORDER BY Performance - String Column  
+statement ok
+CREATE TABLE sort_string AS
+SELECT * FROM read_stata_dta('test/data/large_dataset.dta')
+ORDER BY name
+LIMIT 100;
+
+query I
+SELECT COUNT(*) FROM sort_string;
+----
+100
+
+statement ok
+DROP TABLE sort_string;
+
+# Test 19: Multiple Column Sort Performance
+statement ok
+CREATE TABLE sort_multi AS
+SELECT * FROM read_stata_dta('test/data/large_dataset.dta')
+ORDER BY name, id
+LIMIT 100;
+
+query I
+SELECT COUNT(*) FROM sort_multi;
+----
+100
+
+statement ok
+DROP TABLE sort_multi;
+
+# ===== MEMORY EFFICIENCY TESTS =====
+
+# Test 20: Large File - Streaming Read Test
+# Should not load entire file into memory at once
+statement ok
+SELECT * FROM read_stata_dta('test/data/large_dataset.dta') LIMIT 1;
+
+# Test 21: Wide Dataset Memory Usage
+# Should handle many columns efficiently
+statement ok
+SELECT * FROM read_stata_dta('test/data/mixed_types.dta') LIMIT 10;
+
+# Test 22: String Data Memory Efficiency
+# Should handle variable-length strings efficiently
+statement ok
+SELECT MAX(LENGTH(name)) FROM read_stata_dta('test/data/large_dataset.dta');
+
+# Test 23: NULL Handling Memory Efficiency
+# Should efficiently represent missing values
+statement ok
+SELECT COUNT(*) FROM read_stata_dta('test/data/with_missing.dta')
+WHERE age IS NULL OR name IS NULL;
+
+# ===== CONCURRENT ACCESS PERFORMANCE =====
+
+# Test 24: Multiple Table Functions in Single Query
+statement ok
+SELECT COUNT(*) FROM (
+    SELECT id FROM read_stata_dta('test/data/simple.dta')
+    UNION ALL
+    SELECT id FROM read_stata_dta('test/data/mixed_types.dta')
+);
+
+# Test 25: Nested Subqueries Performance
+statement ok
+SELECT COUNT(*) FROM read_stata_dta('test/data/simple.dta') outer_table
+WHERE id IN (
+    SELECT id FROM read_stata_dta('test/data/simple.dta') inner_table
+    WHERE age > 25
+);
+
+# Test 26: CTE Performance with Stata Files
+statement ok
+WITH stata_cte AS (
+    SELECT * FROM read_stata_dta('test/data/simple.dta')
+    WHERE age IS NOT NULL
+)
+SELECT COUNT(*) FROM stata_cte;
+
+# ===== DATA TYPE CONVERSION PERFORMANCE =====
+
+# Test 27: Numeric Type Conversion Performance
+statement ok
+SELECT 
+    COUNT(CAST(id AS BIGINT)),
+    COUNT(CAST(age AS INTEGER))
+FROM read_stata_dta('test/data/simple.dta');
+
+# Test 28: String Processing Performance
+statement ok
+SELECT 
+    COUNT(UPPER(name)),
+    COUNT(LENGTH(name)),
+    COUNT(SUBSTRING(name, 1, 3))
+FROM read_stata_dta('test/data/simple.dta');
+
+# Test 29: Date/Time Conversion Performance (if applicable)
+# This would test any temporal data conversion
+statement ok
+SELECT COUNT(*) FROM read_stata_dta('test/data/simple.dta')
+WHERE id BETWEEN 1 AND 1000;
+
+# ===== REAL-WORLD USAGE PATTERNS =====
+
+# Test 30: Analytical Query Performance
+statement ok
+CREATE TABLE analytics_test AS
+SELECT 
+    name,
+    COUNT(*) as record_count,
+    AVG(COALESCE(age, 0)) as avg_age,
+    MIN(id) as min_id,
+    MAX(id) as max_id,
+    STDDEV(age) as age_stddev
+FROM read_stata_dta('test/data/large_dataset.dta')
+WHERE name IS NOT NULL
+GROUP BY name
+HAVING COUNT(*) > 1
+ORDER BY record_count DESC
+LIMIT 20;
+
+statement ok
+DROP TABLE analytics_test;
+
+# Test 31: Data Export Performance
+statement ok
+CREATE TABLE export_test AS
+SELECT * FROM read_stata_dta('test/data/large_dataset.dta')
+WHERE id BETWEEN 1 AND 1000;
+
+query I
+SELECT COUNT(*) FROM export_test;
+----
+1000
+
+statement ok
+DROP TABLE export_test;
+
+# Test 32: Complex JOIN with Aggregation
+statement ok
+CREATE TABLE complex_join AS
+SELECT 
+    s.name,
+    COUNT(*) as occurrences,
+    AVG(CAST(s.id AS DOUBLE)) as avg_id
+FROM read_stata_dta('test/data/large_dataset.dta') s
+JOIN read_stata_dta('test/data/simple.dta') ref ON s.name = ref.name
+GROUP BY s.name
+ORDER BY occurrences DESC;
+
+statement ok
+DROP TABLE complex_join;
+
+# ===== STRESS TESTS =====
+
+# Test 33: High-Frequency Access Pattern
+# Simulate rapid repeated access
+statement ok
+CREATE TABLE stress_rapid AS
+    SELECT 'batch1' as batch, COUNT(*) as count FROM read_stata_dta('test/data/simple.dta')
+    UNION ALL
+    SELECT 'batch2', COUNT(*) FROM read_stata_dta('test/data/simple.dta')
+    UNION ALL
+    SELECT 'batch3', COUNT(*) FROM read_stata_dta('test/data/simple.dta')
+    UNION ALL
+    SELECT 'batch4', COUNT(*) FROM read_stata_dta('test/data/simple.dta')
+    UNION ALL
+    SELECT 'batch5', COUNT(*) FROM read_stata_dta('test/data/simple.dta');
+
+query I
+SELECT SUM(count) FROM stress_rapid;
+----
+25
+
+statement ok
+DROP TABLE stress_rapid;
+
+# Test 34: Large Result Set Processing
+statement ok
+CREATE TABLE large_result AS
+SELECT * FROM read_stata_dta('test/data/large_dataset.dta')
+CROSS JOIN (SELECT 1 as multiplier UNION SELECT 2 UNION SELECT 3)
+LIMIT 10000;
+
+query I
+SELECT COUNT(*) FROM large_result;
+----
+10000
+
+statement ok
+DROP TABLE large_result;
+
+# Test 35: Resource Cleanup Verification
+# Ensure no resource leaks after intensive operations
+statement ok
+SELECT COUNT(*) FROM read_stata_dta('test/data/simple.dta');
+SELECT COUNT(*) FROM read_stata_dta('test/data/mixed_types.dta');
+SELECT COUNT(*) FROM read_stata_dta('test/data/large_dataset.dta');
+
+# ===== BENCHMARK BASELINE TESTS =====
+
+# Test 36: Simple Baseline - COUNT(*)
+statement ok
+SELECT COUNT(*) FROM read_stata_dta('test/data/simple.dta');
+
+# Test 37: Simple Baseline - SELECT *
+statement ok
+SELECT * FROM read_stata_dta('test/data/simple.dta');
+
+# Test 38: Simple Baseline - Filtered SELECT
+statement ok
+SELECT * FROM read_stata_dta('test/data/simple.dta') WHERE id <= 3;
+
+# Test 39: Simple Baseline - Aggregation
+statement ok
+SELECT COUNT(*), AVG(CAST(id AS DOUBLE)) FROM read_stata_dta('test/data/simple.dta');
+
+# Test 40: Performance Consistency Check
+# Results should be consistent across multiple runs
+statement ok
+CREATE TABLE consistency_perf AS
+    SELECT 1 as run_id, COUNT(*) as count FROM read_stata_dta('test/data/simple.dta')
+    UNION ALL
+    SELECT 2, COUNT(*) FROM read_stata_dta('test/data/simple.dta')
+    UNION ALL
+    SELECT 3, COUNT(*) FROM read_stata_dta('test/data/simple.dta');
+
+query I
+SELECT COUNT(DISTINCT count) FROM consistency_perf; -- Should be 1 (all same)
+----
+1
+
+query I
+SELECT DISTINCT count FROM consistency_perf;
+----
+5
+
+statement ok
+DROP TABLE consistency_perf;

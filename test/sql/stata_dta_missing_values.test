@@ -1,0 +1,358 @@
+# name: test/sql/stata_dta_missing_values.test
+# description: Comprehensive missing value handling tests for stata_dta extension
+# group: [sql]
+
+require stata_dta
+
+# ===== STATA MISSING VALUE SYSTEM TESTS =====
+
+# Stata has a complex missing value system:
+# - Numeric missing: . (dot)
+# - Extended missing: .a, .b, .c, ..., .z (27 values total)
+# - String missing: empty string ""
+# All should be converted to SQL NULL
+
+# Test 1: Basic Missing Value Detection
+query III
+SELECT 
+    COUNT(*) as total,
+    COUNT(age) as non_missing,
+    COUNT(*) - COUNT(age) as missing_count
+FROM read_stata_dta('test/data/with_missing.dta');
+----
+5	3	2
+
+# Test 2: Missing Values in Different Numeric Types
+query IIII
+SELECT 
+    COUNT(byte_missing) as byte_non_missing,
+    COUNT(int_missing) as int_non_missing,
+    COUNT(long_missing) as long_non_missing,
+    COUNT(float_missing) as float_non_missing
+FROM read_stata_dta('test/data/with_missing.dta');
+----
+3	3	3	4
+
+# Test 3: NULL Detection with IS NULL
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/with_missing.dta') 
+WHERE age IS NULL;
+----
+2
+
+# Test 4: NULL Detection with IS NOT NULL
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/with_missing.dta') 
+WHERE age IS NOT NULL;
+----
+3
+
+# Test 5: COALESCE with Missing Values
+query III
+SELECT 
+    id,
+    name,
+    COALESCE(age, -1) as age_with_default
+FROM read_stata_dta('test/data/with_missing.dta')
+ORDER BY id;
+----
+1	John	25.5
+2	Jane	30.0
+3	Bob	-1.0
+4	Alice	22.8
+5	Charlie	-1.0
+
+# Test 6: CASE Statement with Missing Values
+query III
+SELECT 
+    id,
+    name,
+    CASE 
+        WHEN age IS NULL THEN 'Missing'
+        WHEN age < 25 THEN 'Young'
+        WHEN age >= 25 THEN 'Adult'
+    END as age_category
+FROM read_stata_dta('test/data/with_missing.dta')
+ORDER BY id;
+----
+1	John	Adult
+2	Jane	Adult
+3	Bob	Missing
+4	Alice	Young
+5	Charlie	Missing
+
+# Test 7: Aggregation Functions Ignore NULLs
+query RRR
+SELECT 
+    AVG(age) as avg_age,
+    MIN(age) as min_age,
+    MAX(age) as max_age
+FROM read_stata_dta('test/data/with_missing.dta');
+----
+26.1	22.8	30.0
+
+# Test 8: COUNT vs COUNT(*) with Missing Values
+query II
+SELECT 
+    COUNT(*) as total_rows,
+    COUNT(age) as non_null_ages
+FROM read_stata_dta('test/data/with_missing.dta');
+----
+5	3
+
+# Test 9: String Missing Values (Empty Strings)
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/with_missing.dta')
+WHERE string_missing IS NULL OR string_missing = '';
+----
+2
+
+# Test 10: DISTINCT with Missing Values
+query I
+SELECT COUNT(DISTINCT age) FROM read_stata_dta('test/data/with_missing.dta');
+----
+3
+
+# Test 11: Missing Values in WHERE Clauses
+query II
+SELECT id, name FROM read_stata_dta('test/data/with_missing.dta')
+WHERE age IS NULL
+ORDER BY id;
+----
+3	Bob
+5	Charlie
+
+# Test 12: Missing Values Not Equal to Anything (Including Themselves)
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/with_missing.dta')
+WHERE age = age; -- This should exclude NULLs
+----
+3
+
+# Test 13: NULL-Safe Equality with IS DISTINCT FROM
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/with_missing.dta') w1
+JOIN read_stata_dta('test/data/with_missing.dta') w2 
+ON w1.id = w2.id AND w1.age IS NOT DISTINCT FROM w2.age;
+----
+5
+
+# Test 14: ORDER BY with Missing Values (NULLs should sort last by default)
+query III
+SELECT id, name, age FROM read_stata_dta('test/data/with_missing.dta')
+ORDER BY age, id;
+----
+4	Alice	22.8
+1	John	25.5
+2	Jane	30.0
+3	Bob	NULL
+5	Charlie	NULL
+
+# Test 15: ORDER BY with NULLS FIRST
+query III
+SELECT id, name, age FROM read_stata_dta('test/data/with_missing.dta')
+ORDER BY age NULLS FIRST, id;
+----
+3	Bob	NULL
+5	Charlie	NULL
+4	Alice	22.8
+1	John	25.5
+2	Jane	30.0
+
+# Test 16: GROUP BY with Missing Values
+query II
+SELECT 
+    CASE WHEN age IS NULL THEN 'Missing' ELSE 'Present' END as age_status,
+    COUNT(*) as count
+FROM read_stata_dta('test/data/with_missing.dta')
+GROUP BY CASE WHEN age IS NULL THEN 'Missing' ELSE 'Present' END
+ORDER BY age_status;
+----
+Missing	2
+Present	3
+
+# Test 17: HAVING with Missing Values
+query IR
+SELECT 
+    CASE WHEN age IS NULL THEN 'Unknown' ELSE 'Known' END as category,
+    AVG(COALESCE(age, 0)) as avg_with_zero
+FROM read_stata_dta('test/data/with_missing.dta')
+GROUP BY CASE WHEN age IS NULL THEN 'Unknown' ELSE 'Known' END
+HAVING COUNT(*) > 1
+ORDER BY category;
+----
+Known	26.1
+Unknown	0.0
+
+# Test 18: Window Functions with Missing Values
+query IIIR
+SELECT 
+    id,
+    name,
+    age,
+    AVG(age) OVER () as overall_avg
+FROM read_stata_dta('test/data/with_missing.dta')
+ORDER BY id;
+----
+1	John	25.5	26.1
+2	Jane	30.0	26.1
+3	Bob	NULL	26.1
+4	Alice	22.8	26.1
+5	Charlie	NULL	26.1
+
+# Test 19: PARTITION BY with Missing Values
+query IIIRI
+SELECT 
+    id,
+    name,
+    age,
+    CASE WHEN age IS NULL THEN 'Missing' ELSE 'Present' END as age_status,
+    COUNT(*) OVER (PARTITION BY CASE WHEN age IS NULL THEN 'Missing' ELSE 'Present' END) as group_count
+FROM read_stata_dta('test/data/with_missing.dta')
+ORDER BY id;
+----
+1	John	25.5	Present	3
+2	Jane	30.0	Present	3
+3	Bob	NULL	Missing	2
+4	Alice	22.8	Present	3
+5	Charlie	NULL	Missing	2
+
+# Test 20: LAG/LEAD with Missing Values
+query IIIRR
+SELECT 
+    id,
+    name,
+    age,
+    LAG(age) OVER (ORDER BY id) as prev_age,
+    LEAD(age) OVER (ORDER BY id) as next_age
+FROM read_stata_dta('test/data/with_missing.dta')
+ORDER BY id;
+----
+1	John	25.5	NULL	30.0
+2	Jane	30.0	25.5	NULL
+3	Bob	NULL	30.0	22.8
+4	Alice	22.8	NULL	NULL
+5	Charlie	NULL	22.8	NULL
+
+# ===== STATA SPECIFIC MISSING VALUE TESTS =====
+
+# Test 21: Multiple Missing Value Types in Same Column
+# Note: All Stata missing types (.a, .b, .c, etc.) should become NULL
+statement ok
+SELECT * FROM read_stata_dta('test/data/with_missing.dta')
+WHERE byte_missing IS NULL OR int_missing IS NULL;
+
+# Test 22: Missing Value Boundaries
+# Stata missing values are at the extreme ends of numeric ranges
+query II
+SELECT 
+    MIN(byte_missing) >= -127,
+    MAX(byte_missing) <= 100
+FROM read_stata_dta('test/data/with_missing.dta')
+WHERE byte_missing IS NOT NULL;
+----
+true	true
+
+# Test 23: Float Missing Values (Not NaN)
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/with_missing.dta')
+WHERE float_missing IS NULL;
+----
+1
+
+# Test 24: Double Missing Values (Not NaN)
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/with_missing.dta')
+WHERE double_missing IS NULL;
+----
+1
+
+# Test 25: String Missing vs Empty String
+# Both should be treated as NULL in our implementation
+query II
+SELECT 
+    COUNT(*) as total_strings,
+    COUNT(string_missing) as non_null_strings
+FROM read_stata_dta('test/data/with_missing.dta');
+----
+5	3
+
+# ===== EDGE CASES WITH MISSING VALUES =====
+
+# Test 26: All Values Missing in a Column
+statement ok
+CREATE TABLE all_missing AS 
+SELECT id, NULL as all_null_col 
+FROM read_stata_dta('test/data/simple.dta');
+
+query I
+SELECT COUNT(all_null_col) FROM all_missing;
+----
+0
+
+statement ok
+DROP TABLE all_missing;
+
+# Test 27: Mixed Missing and Non-Missing in Calculations
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/with_missing.dta')
+WHERE age + 1 IS NOT NULL; -- NULL + 1 = NULL
+----
+3
+
+# Test 28: Missing Values in Joins
+statement ok
+CREATE TABLE lookup AS 
+SELECT 25.5 as age, 'Young Adult' as category
+UNION SELECT 30.0, 'Adult'
+UNION SELECT NULL, 'Unknown'; -- This won't match NULLs in the data
+
+query III
+SELECT w.id, w.name, l.category
+FROM read_stata_dta('test/data/with_missing.dta') w
+LEFT JOIN lookup l ON w.age = l.age  -- NULL won't match NULL here
+ORDER BY w.id;
+----
+1	John	Young Adult
+2	Jane	Adult
+3	Bob	NULL
+4	Alice	NULL
+5	Charlie	NULL
+
+statement ok
+DROP TABLE lookup;
+
+# Test 29: NULLIF with Missing Values
+query III
+SELECT 
+    id,
+    name,
+    NULLIF(age, 25.5) as age_nullif_john
+FROM read_stata_dta('test/data/with_missing.dta')
+ORDER BY id;
+----
+1	John	NULL
+2	Jane	30.0
+3	Bob	NULL
+4	Alice	22.8
+5	Charlie	NULL
+
+# Test 30: Complex NULL Handling in CASE
+query III
+SELECT 
+    id,
+    name,
+    CASE 
+        WHEN age IS NULL THEN 'No age data'
+        WHEN age = 0 THEN 'Zero age' 
+        WHEN age < 0 THEN 'Invalid age'
+        ELSE CAST(age AS VARCHAR)
+    END as age_description
+FROM read_stata_dta('test/data/with_missing.dta')
+ORDER BY id;
+----
+1	John	25.5
+2	Jane	30.0
+3	Bob	No age data
+4	Alice	22.8
+5	Charlie	No age data
