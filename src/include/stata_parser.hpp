@@ -68,7 +68,7 @@ public:
     bool IsMissingValue(const StataVariable& var, const void* data);
     
 protected:
-    std::unique_ptr<std::ifstream> file_stream_;
+    unique_ptr<std::ifstream> file_stream_;
     bool is_big_endian_;
     bool native_is_big_endian_;
     
@@ -92,7 +92,7 @@ public:
     // Main interface
     bool Open();
     void Close();
-    std::unique_ptr<DataChunk> ReadChunk(idx_t chunk_size = STANDARD_VECTOR_SIZE);
+    unique_ptr<DataChunk> ReadChunk(idx_t chunk_size = STANDARD_VECTOR_SIZE);
     
     // Metadata access
     const StataHeader& GetHeader() const { return header_; }
@@ -103,7 +103,7 @@ private:
     std::string filename_;
     StataHeader header_;
     std::vector<StataVariable> variables_;
-    std::vector<LogicalType> column_types_;
+    vector<LogicalType> column_types_;
     std::map<std::string, std::map<int32_t, std::string>> value_labels_;
     
     uint64_t data_location_;

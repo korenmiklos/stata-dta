@@ -18,7 +18,7 @@ namespace duckdb {
 
 // Stata DTA table function data
 struct StataDtaBindData : public TableFunctionData {
-	std::unique_ptr<StataReader> reader;
+	unique_ptr<StataReader> reader;
 	std::string filename;
 	vector<LogicalType> types;
 	vector<string> names;
@@ -36,7 +36,7 @@ static unique_ptr<FunctionData> StataDtaBind(ClientContext &context, TableFuncti
 	result->filename = StringValue::Get(input.inputs[0]);
 	
 	// Create and open reader
-	result->reader = std::make_unique<StataReader>(result->filename);
+	result->reader = make_uniq<StataReader>(result->filename);
 	if (!result->reader->Open()) {
 		throw IOException("Cannot open Stata file: " + result->filename);
 	}

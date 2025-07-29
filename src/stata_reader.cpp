@@ -15,7 +15,7 @@ StataReader::~StataReader() {
 
 bool StataReader::Open() {
     try {
-        file_stream_ = std::make_unique<std::ifstream>(filename_, std::ios::binary);
+        file_stream_ = make_uniq<std::ifstream>(filename_, std::ios::binary);
         if (!file_stream_->is_open()) {
             throw IOException("Cannot open Stata file: " + filename_);
         }
@@ -251,13 +251,13 @@ void StataReader::PrepareDataReading() {
     }
 }
 
-std::unique_ptr<DataChunk> StataReader::ReadChunk(idx_t chunk_size) {
+unique_ptr<DataChunk> StataReader::ReadChunk(idx_t chunk_size) {
     if (!HasMoreData()) {
         return nullptr;
     }
     
-    auto chunk = std::make_unique<DataChunk>();
-    chunk->Initialize(Allocator::DefaultAllocator(), column_types_);
+    auto chunk = make_uniq<DataChunk>();
+    chunk->Initialize(Allocator::DefaultAllocator(), column_types_, chunk_size);
     
     ReadDataChunk(*chunk, chunk_size);
     

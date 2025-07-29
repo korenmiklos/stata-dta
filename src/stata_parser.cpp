@@ -243,5 +243,7 @@ bool StataParser::IsMissingValue(const StataVariable& var, const void* data) {
 template uint16_t StataParser::SwapBytes<uint16_t>(uint16_t);
 template uint32_t StataParser::SwapBytes<uint32_t>(uint32_t);
 template uint64_t StataParser::SwapBytes<uint64_t>(uint64_t);
+template int StataParser::SwapBytes<int>(int);
+template short StataParser::SwapBytes<short>(short);
 
 } // namespace duckdb

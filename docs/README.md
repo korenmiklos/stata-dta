@@ -252,9 +252,13 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 
-- Based on the pandas Stata reader implementation
+- Based on the pandas Stata reader implementation (pandas development team, 2020). The pandas BSD 3-Clause License allows reuse and modification.
 - Inspired by DuckDB's extensible architecture
 - Thanks to the Stata community for format documentation
+
+## References
+
+pandas development team. (2020). *pandas-dev/pandas: Pandas* (v1.0.0). Zenodo. https://doi.org/10.5281/zenodo.3509134
 
 ## Support
 
