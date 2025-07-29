@@ -139,6 +139,9 @@ private:
     uint64_t ReadObsCount();
     std::string ReadDataLabel();
     std::string ReadTimestamp();
+    
+    // XML format helpers (version 117+)
+    std::string FindXMLSection(const std::string& section_name);
 };
 
 } // namespace duckdb

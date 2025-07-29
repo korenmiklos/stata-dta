@@ -1,0 +1,76 @@
+# group: [sql]
+
+require stata_dta
+
+# ===== XML FORMAT STATA FILES (VERSION 117+) =====
+# Tests for Stata files that use XML-based headers instead of binary format
+# These formats were introduced in Stata 13+ and use mixed XML/binary structure
+
+# Test 1: Version 118 XML format detection and parsing
+# Real-world file that starts with <stata_dta><header><release>118</release>
+statement ok
+SELECT * FROM read_stata_dta('test/data/expat-local-debug.dta') LIMIT 1;
+
+# Test 2: Header parsing - version detection
+# Should correctly identify as version 118
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/expat-local-debug.dta');
+----
+326
+
+# Test 3: Variable count parsing from XML <K> tag
+# This file has 2 variables as indicated by \x02\x00 after <K>
+query I
+SELECT COUNT(*) FROM (DESCRIBE SELECT * FROM read_stata_dta('test/data/expat-local-debug.dta'));
+----
+2
+
+# Test 4: Observation count parsing from XML <N> tag  
+# This file has 326 observations (F\x01\x00\x00\x00\x00\x00\x00 = 326 in little-endian)
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/expat-local-debug.dta');
+----
+326
+
+# Test 5: String variable handling in XML format
+# The 'problem' column should contain string data
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/expat-local-debug.dta')
+WHERE problem = 'only in miklos';
+----
+93
+
+# Test 6: Integer variable handling in XML format
+# The 'frame_id_numeric' column should contain int32 data
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/expat-local-debug.dta')
+WHERE frame_id_numeric BETWEEN 10000000 AND 25000000;
+----
+326
+
+# Test 7: Mixed XML/binary data section parsing
+# After XML headers, data section should be parsed as binary
+statement ok
+SELECT frame_id_numeric, problem 
+FROM read_stata_dta('test/data/expat-local-debug.dta')
+ORDER BY frame_id_numeric
+LIMIT 10;
+
+# Test 8: Performance with real-world XML format file
+statement ok
+SELECT COUNT(*), AVG(frame_id_numeric::FLOAT), MAX(LENGTH(problem))
+FROM read_stata_dta('test/data/expat-local-debug.dta');
+
+# Test 9: Error handling - should not fail with "Unexpected end of file"  
+# This test specifically addresses the original bug report
+statement ok
+CREATE TEMP TABLE xml_test AS 
+SELECT * FROM read_stata_dta('test/data/expat-local-debug.dta');
+
+# Test 10: Data integrity verification
+# Ensure all data is read correctly without truncation
+query II
+SELECT COUNT(*), COUNT(DISTINCT frame_id_numeric) 
+FROM read_stata_dta('test/data/expat-local-debug.dta');
+----
+326	326

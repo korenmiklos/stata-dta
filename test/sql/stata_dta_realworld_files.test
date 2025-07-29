@@ -1,0 +1,81 @@
+# group: [sql]
+
+require stata_dta
+
+# ===== REAL-WORLD STATA FILE TESTS =====
+# These tests use actual Stata files that have caused issues in production
+# Testing edge cases and format variations not covered by synthetic test data
+
+# Test 1: Real-world version 118 file - Basic functionality
+# This file caused "Unexpected end of Stata file while reading string" error
+statement ok
+SELECT COUNT(*) FROM read_stata_dta('test/data/expat-local-debug.dta');
+
+query I  
+SELECT COUNT(*) FROM read_stata_dta('test/data/expat-local-debug.dta');
+----
+326
+
+# Test 2: Column structure of real-world file
+query I
+SELECT COUNT(*) FROM (DESCRIBE SELECT * FROM read_stata_dta('test/data/expat-local-debug.dta'));
+----
+2
+
+# Test 3: Column names match pandas expectations
+query I
+SELECT COUNT(*) FROM (
+    DESCRIBE SELECT * FROM read_stata_dta('test/data/expat-local-debug.dta')
+) WHERE column_name IN ('frame_id_numeric', 'problem');
+----
+2
+
+# Test 4: Data content verification - specific values
+query II
+SELECT frame_id_numeric, problem 
+FROM read_stata_dta('test/data/expat-local-debug.dta') 
+WHERE frame_id_numeric = 10059971;
+----
+10059971	only in miklos
+
+# Test 5: String data handling in real-world file
+query I
+SELECT COUNT(DISTINCT problem) FROM read_stata_dta('test/data/expat-local-debug.dta');
+----
+4
+
+# Test 6: Numeric data range verification
+query II
+SELECT MIN(frame_id_numeric), MAX(frame_id_numeric) 
+FROM read_stata_dta('test/data/expat-local-debug.dta');
+----
+10059971	24216251
+
+# Test 7: No missing values in this particular file
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/expat-local-debug.dta') 
+WHERE frame_id_numeric IS NULL OR problem IS NULL;
+----
+0
+
+# Test 8: Join with other data sources
+statement ok
+CREATE TEMP TABLE test_join AS SELECT 1 as id, 'test' as label;
+
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/expat-local-debug.dta') r
+JOIN test_join t ON r.frame_id_numeric > 10000000;
+----
+326
+
+# Test 9: Aggregation operations work correctly
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/expat-local-debug.dta')
+GROUP BY problem;
+----
+326
+
+# Test 10: ORDER BY operations on real-world data
+statement ok
+SELECT * FROM read_stata_dta('test/data/expat-local-debug.dta')
+ORDER BY frame_id_numeric LIMIT 5;
