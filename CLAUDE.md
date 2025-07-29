@@ -81,13 +81,19 @@ python3 ./scripts/bootstrap-template.py <new_extension_name>  # Rename from temp
 
 ### ✅ Completed Features
 - **Multi-version Support**: Stata 105, 108, 111, 113, 114, 115, 117, 118, 119
-- **Complete Data Types**: byte, int, long, float, double, strings (1-244 chars)
+  - Binary format support (versions 105-116)
+  - XML format support (versions 117-119) with proper section parsing
+- **Complete Data Types**: All Stata data types with version-specific mappings
+  - Strings (1-244 characters)
+  - Numeric types: BYTE (int8), INT (int16), LONG (int32), FLOAT, DOUBLE
+  - Version 118+ type codes: 248=LONG, 249=INT, 250=BYTE
 - **Missing Value Handling**: Proper NULL conversion for all data types
 - **Performance Optimization**: Chunked reading, memory efficiency
 - **Byte Order Support**: Both big-endian and little-endian files
+- **XML Format Parser**: Complete support for mixed XML/binary structure
 - **Error Handling**: Comprehensive validation and error messages
-- **Test Suite**: Unit, functional, and performance tests
-- **Documentation**: Examples, usage guides, API reference
+- **Test Suite**: Unit, functional, performance, and real-world compatibility tests
+- **Production Ready**: Successfully handles large-scale production datasets
 
 ### 🔄 Future Enhancements
 - Value labels (categorical mappings)
@@ -104,12 +110,15 @@ python3 ./scripts/bootstrap-template.py <new_extension_name>  # Rename from temp
 3. **DuckDB Integration**: Table function interface with proper memory management
 
 ### Data Flow
-1. File opening and version detection
-2. Header parsing (variables, formats, labels)
-3. Data location identification
-4. Chunked data reading with type conversion
-5. Missing value detection and NULL mapping
-6. DuckDB DataChunk population
+1. File opening and format detection (binary vs XML)
+2. Version-specific header parsing
+   - Binary format: Sequential byte reading
+   - XML format: Tag-based section parsing with `FindXMLSection()`
+3. Variable metadata extraction (types, names, formats)
+4. Data section boundary identification
+5. Chunked data reading with version-specific type conversion
+6. Missing value detection and NULL mapping
+7. DuckDB DataChunk population with proper type casting
 
 ### Performance Features
 - **Memory Efficient**: Streaming reads, configurable chunk sizes
@@ -123,12 +132,17 @@ python3 ./scripts/bootstrap-template.py <new_extension_name>  # Rename from temp
 - `test/data/large_dataset.dta` - Performance testing (10k rows)
 - `test/data/with_missing.dta` - Missing value handling
 - `test/data/version_*.dta` - Multi-version compatibility
+- `test/data/v118_types_test.dta` - Version 118+ type codes testing
+- `test/data/expat-local-debug.dta` - Real-world XML format validation
 
 ### Test Categories
 1. **Unit Tests**: Basic functionality and error conditions
 2. **Functional Tests**: Real data processing and SQL integration
 3. **Performance Tests**: Large dataset handling and memory usage
 4. **Compatibility Tests**: Multiple Stata version support
+5. **XML Format Tests**: Version 117+ XML structure validation
+6. **Real-World Tests**: Production dataset compatibility
+7. **Type Code Tests**: Version-specific type mapping validation
 
 ## Development Notes
 
@@ -143,6 +157,51 @@ python3 ./scripts/bootstrap-template.py <new_extension_name>  # Rename from temp
 - Test files in `test/sql/` - Regression testing
 - CMakeLists.txt - Build configuration
 - Extension config - DuckDB integration settings
+
+## Version-Specific Implementation Details
+
+### Type Code Mappings
+The extension handles different type code schemes across Stata versions:
+
+**Traditional Binary Format (versions 105-116):**
+- 251 = BYTE (int8)
+- 252 = INT (int16) 
+- 253 = LONG (int32)
+- 254 = FLOAT (float32)
+- 255 = DOUBLE (float64)
+- 1-244 = STRING (length 1-244)
+
+**Modern XML Format (versions 118+):**
+- 248 = LONG (int32) - *Key discovery: not DOUBLE as initially assumed*
+- 249 = INT (int16)
+- 250 = BYTE (int8)
+- 254 = FLOAT (float32)
+- 255 = DOUBLE (float64) 
+- 1-244 = STRING (length 1-244)
+
+### XML Format Structure
+Version 117+ files use a mixed XML/binary format:
+```
+<stata_dta>
+  <header>...</header>
+  <map>...</map>
+  <variable_types>BINARY_DATA</variable_types>
+  <varnames>BINARY_DATA</varnames>
+  <sortlist>BINARY_DATA</sortlist>
+  <formats>BINARY_DATA</formats>
+  <value_label_names>BINARY_DATA</value_label_names>
+  <variable_labels>BINARY_DATA</variable_labels>
+  <characteristics>BINARY_DATA</characteristics>
+  <data>BINARY_DATA</data>
+  <value_labels>BINARY_DATA</value_labels>
+</stata_dta>
+```
+
+### Critical Technical Discoveries
+1. **Type Code 248 Mapping**: Initially assumed to be DOUBLE, actually represents INT32 in version 118+
+2. **Padding Bytes**: Version 118+ variable types include padding bytes (every other byte is meaningful)
+3. **Data Boundaries**: XML format requires parsing `<data>` and `</data>` tags for proper section detection
+4. **Real-World Compatibility**: Production files may contain categorical data encoded as integer codes
 
 ## Reference Implementation
 

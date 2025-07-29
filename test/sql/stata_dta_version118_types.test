@@ -1,0 +1,70 @@
+# name: test/sql/stata_dta_version118_types.test
+# description: Unit tests for version 118+ type codes that would catch type mapping bugs
+# group: [sql]
+
+require stata_dta
+
+# ===== VERSION 118+ TYPE CODE TESTS =====
+# These tests specifically target the new type codes introduced in version 118+
+# and would have caught the "Unsupported Stata data type" bug
+
+# Test 1: Version 118 file should load without "Unsupported Stata data type" error
+statement ok
+SELECT COUNT(*) FROM read_stata_dta('test/data/v118_types_test.dta');
+
+# Test 2: Type code 249 should map to INT16 (SMALLINT in DuckDB)
+query T
+SELECT typeof(year_col) FROM read_stata_dta('test/data/v118_types_test.dta') LIMIT 1;
+----
+SMALLINT
+
+# Test 3: Type code 248 should map to INT32 (INTEGER in DuckDB)  
+query T
+SELECT typeof(id_col) FROM read_stata_dta('test/data/v118_types_test.dta') LIMIT 1;
+----
+INTEGER
+
+# Test 4: Type code 250 should map to INT8 (TINYINT in DuckDB)
+query T
+SELECT typeof(flag_col) FROM read_stata_dta('test/data/v118_types_test.dta') LIMIT 1;
+----
+TINYINT
+
+# Test 5: Data values should be read correctly for type 249 (INT16)
+query I
+SELECT MAX(year_col) FROM read_stata_dta('test/data/v118_types_test.dta');
+----
+1992
+
+# Test 6: Data values should be read correctly for type 248 (INT32)
+query I
+SELECT MAX(id_col) FROM read_stata_dta('test/data/v118_types_test.dta');
+----
+3000
+
+# Test 7: Data values should be read correctly for type 250 (INT8)
+query I
+SELECT MAX(flag_col) FROM read_stata_dta('test/data/v118_types_test.dta');
+----
+1
+
+# Test 8: All rows should be readable (no data corruption)
+query I
+SELECT COUNT(*) FROM read_stata_dta('test/data/v118_types_test.dta');
+----
+3
+
+# Test 9: Type code combinations should work together
+statement ok
+SELECT year_col, id_col, flag_col 
+FROM read_stata_dta('test/data/v118_types_test.dta')
+ORDER BY year_col;
+
+# Test 10: Version 118+ type codes should not cause crashes
+statement ok
+SELECT 
+    typeof(year_col) as year_type,
+    typeof(id_col) as id_type, 
+    typeof(flag_col) as flag_type
+FROM read_stata_dta('test/data/v118_types_test.dta') 
+LIMIT 1;

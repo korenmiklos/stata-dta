@@ -212,6 +212,12 @@ void StataReader::ReadVariableTypes() {
             } else if (type_code == 248) {
                 // Version 118+: Based on analysis, 248 appears to be LONG/INT32, not DOUBLE
                 variables_[i].type = StataDataType::LONG;
+            } else if (type_code == 249) {
+                // Version 118+: 249 appears to be INT16
+                variables_[i].type = StataDataType::INT;
+            } else if (type_code == 250) {
+                // Version 118+: 250 appears to be BYTE/INT8
+                variables_[i].type = StataDataType::BYTE;
             } else if (type_code == 254) {
                 variables_[i].type = StataDataType::FLOAT;
             } else if (type_code == 253) {
