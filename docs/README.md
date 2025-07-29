@@ -44,7 +44,7 @@ This extension allows you to seamlessly read Stata data files (`.dta` format) di
 
 1. **Clone with submodules**:
 ```bash
-git clone --recurse-submodules https://github.com/your-repo/stata-dta.git
+git clone --recurse-submodules https://github.com/codedthinking/stata-dta.git
 cd stata-dta
 ```
 
@@ -255,6 +255,10 @@ MIT License - see [LICENSE](LICENSE) file for details.
 - Based on the pandas Stata reader implementation (pandas development team, 2020). The pandas BSD 3-Clause License allows reuse and modification.
 - Inspired by DuckDB's extensible architecture
 - Thanks to the Stata community for format documentation
+
+## Trademark Notice
+
+Stata® is a registered trademark of StataCorp LLC. This extension is an independent third-party tool designed to help Stata users access their data through DuckDB. It is not endorsed by, affiliated with, or supported by StataCorp LLC. This extension is provided for compatibility purposes only to facilitate data analysis workflows.
 
 ## References
 

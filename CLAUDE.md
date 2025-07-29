@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a production-ready DuckDB extension for reading Stata .dta files directly into DuckDB tables. The extension provides high-performance access to Stata datasets with full SQL integration, supporting multiple file versions (105-119) and all Stata data types with proper missing value handling.
 
+**Repository**: https://github.com/codedthinking/stata-dta
+
+**Trademark Notice**: Stata® is a registered trademark of StataCorp LLC. This extension is an independent third-party tool designed to help Stata users access their data through DuckDB. It is not endorsed by, affiliated with, or supported by StataCorp LLC.
+
 ## Architecture
 
 - **Extension Name**: `stata_dta` (defined in CMakeLists.txt and Makefile)
