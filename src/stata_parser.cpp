@@ -33,12 +33,13 @@ void StataParser::InitializeTypeMappings() {
 }
 
 void StataParser::InitializeMissingValues() {
-    // Missing value constants from Stata
-    missing_int_values_[StataDataType::BYTE] = 101;
-    missing_int_values_[StataDataType::INT] = 32741;
-    missing_int_values_[StataDataType::LONG] = 2147483621;
+    // Missing value constants from Stata - using the highest reserved values
+    missing_int_values_[StataDataType::BYTE] = 101;    // byte missing starts at 101
+    missing_int_values_[StataDataType::INT] = 32741;   // int missing starts at 32741  
+    missing_int_values_[StataDataType::LONG] = 2147483621;  // long missing starts at 2147483621
     
-    // Missing float values (specific bit patterns)
+    // For floats and doubles, Stata uses IEEE 754 NaN values
+    // We don't need to store specific values since we check with std::isnan()
     missing_float_values_[StataDataType::FLOAT] = std::numeric_limits<float>::quiet_NaN();
     missing_float_values_[StataDataType::DOUBLE] = std::numeric_limits<double>::quiet_NaN();
 }
@@ -216,23 +217,30 @@ bool StataParser::IsMissingValue(const StataVariable& var, const void* data) {
     switch (var.type) {
         case StataDataType::BYTE: {
             int8_t value = *static_cast<const int8_t*>(data);
-            return value == missing_int_values_[StataDataType::BYTE];
+            // Missing values start at 101 and go up to 127 (., .a, .b, ..., .z)
+            return value >= missing_int_values_[StataDataType::BYTE];
         }
         case StataDataType::INT: {
             int16_t value = *static_cast<const int16_t*>(data);
-            return value == missing_int_values_[StataDataType::INT];
+            // Missing values start at 32741 and go up to 32767
+            return value >= missing_int_values_[StataDataType::INT];
         }
         case StataDataType::LONG: {
             int32_t value = *static_cast<const int32_t*>(data);
-            return value == missing_int_values_[StataDataType::LONG];
+            // Missing values start at 2147483621 and go up to 2147483647
+            return value >= missing_int_values_[StataDataType::LONG];
         }
         case StataDataType::FLOAT: {
             float value = *static_cast<const float*>(data);
+            // Stata uses IEEE 754 NaN values for missing floats
             return std::isnan(value);
         }
         case StataDataType::DOUBLE: {
             double value = *static_cast<const double*>(data);
-            return std::isnan(value);
+            // Stata missing values for doubles are very large finite values
+            // The base missing value (.) is approximately 8.988e+307
+            // All missing values are >= this threshold
+            return value >= 8.988e+307;
         }
         default:
             return false;

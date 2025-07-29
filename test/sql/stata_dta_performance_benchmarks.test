@@ -79,7 +79,7 @@ DROP TABLE repeat_test;
 # Should efficiently handle joins with large datasets
 statement ok
 CREATE TABLE join_test AS
-SELECT l1.id, l1.name, l2.age
+SELECT l1.id, l1.random_float, l2.random_int
 FROM read_stata_dta('test/data/large_dataset.dta') l1
 JOIN read_stata_dta('test/data/large_dataset.dta') l2 ON l1.id = l2.id
 LIMIT 100;
@@ -135,17 +135,17 @@ WHERE id > 100;
 # Test 14: Complex WHERE Clause Performance
 statement ok
 SELECT COUNT(*) FROM read_stata_dta('test/data/large_dataset.dta')
-WHERE id BETWEEN 100 AND 1000 AND name IS NOT NULL;
+WHERE id BETWEEN 100 AND 1000 AND category IS NOT NULL;
 
 # Test 15: String Filtering Performance
 statement ok
 SELECT COUNT(*) FROM read_stata_dta('test/data/large_dataset.dta')
-WHERE name LIKE 'A%';
+WHERE category LIKE 'A%';
 
 # Test 16: Multiple Conditions Performance
 statement ok
 SELECT COUNT(*) FROM read_stata_dta('test/data/large_dataset.dta')
-WHERE id > 50 AND id < 500 AND name IS NOT NULL AND name != '';
+WHERE id > 50 AND id < 500 AND category IS NOT NULL AND category != '';
 
 # ===== SORTING PERFORMANCE TESTS =====
 
@@ -168,7 +168,7 @@ DROP TABLE sort_numeric;
 statement ok
 CREATE TABLE sort_string AS
 SELECT * FROM read_stata_dta('test/data/large_dataset.dta')
-ORDER BY name
+ORDER BY category
 LIMIT 100;
 
 query I

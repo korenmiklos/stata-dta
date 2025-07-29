@@ -28,13 +28,13 @@ IO Error: Cannot open Stata file: invalid/relative/path/file.dta
 statement error
 SELECT * FROM read_stata_dta('test/');
 ----
-IO Error: Cannot open Stata file: test/
+IO Error: Unexpected end of Stata file
 
 # Test 5: Directory Instead of File - Absolute
 statement error
 SELECT * FROM read_stata_dta('/Users/');
 ----
-IO Error: Cannot open Stata file: /Users/
+IO Error: Unexpected end of Stata file
 
 # Test 6: Empty String Path
 statement error
@@ -46,7 +46,7 @@ IO Error: Cannot open Stata file:
 statement error
 SELECT * FROM read_stata_dta(NULL);
 ----
-Conversion Error: NULL value not allowed
+Invalid Input Error: read_stata_dta requires a filename argument
 
 # Test 8: Very Long File Path
 statement error

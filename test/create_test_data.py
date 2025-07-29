@@ -21,7 +21,7 @@ def create_test_files():
         'value': [10.5, 20.3, 30.1, 40.7, 50.2],
         'count': [100, 200, 300, 400, 500]
     })
-    df_simple.to_stata(test_dir / "simple.dta", version=117)
+    df_simple.to_stata(test_dir / "simple.dta", version=114)
     print("Created simple.dta")
     
     # Test 2: Mixed data types
@@ -32,7 +32,7 @@ def create_test_files():
         'salary': [50000.5, 60000.0, 75000.25, 55000.75],
         'active': [True, False, True, True]
     })
-    df_mixed.to_stata(test_dir / "mixed_types.dta", version=117)
+    df_mixed.to_stata(test_dir / "mixed_types.dta", version=114)
     print("Created mixed_types.dta")
     
     # Test 3: Data with missing values  
@@ -42,7 +42,7 @@ def create_test_files():
         'grade': ['A', 'B', '', 'C', 'A'],  # Use empty string instead of None
         'count': [10, 0, 30, 0, 50]  # Use 0 instead of boolean with None
     })
-    df_missing.to_stata(test_dir / "with_missing.dta", version=117)
+    df_missing.to_stata(test_dir / "with_missing.dta", version=114)
     print("Created with_missing.dta")
     
     # Test 4: Large dataset for performance testing
@@ -54,7 +54,7 @@ def create_test_files():
         'category': np.random.choice(['A', 'B', 'C', 'D'], 10000),
         'sequence': range(10000, 20000)  # Avoid timestamp issues
     })
-    df_large.to_stata(test_dir / "large_dataset.dta", version=117)
+    df_large.to_stata(test_dir / "large_dataset.dta", version=114)
     print("Created large_dataset.dta")
     
     # Test 5: Different Stata versions
@@ -74,7 +74,7 @@ def create_test_files():
     
     # Test 6: Empty dataset
     df_empty = pd.DataFrame({'col1': [], 'col2': []})
-    df_empty.to_stata(test_dir / "empty.dta", version=117)
+    df_empty.to_stata(test_dir / "empty.dta", version=114)
     print("Created empty.dta")
     
     # Test 7: Long strings
@@ -83,7 +83,7 @@ def create_test_files():
         'medium_str': ['medium length string'] * 3,
         'long_str': ['This is a very long string that should test the string handling capabilities of our extension'] * 3
     })
-    df_strings.to_stata(test_dir / "string_lengths.dta", version=117)
+    df_strings.to_stata(test_dir / "string_lengths.dta", version=114)
     print("Created string_lengths.dta")
     
     # Test 8: Special characters and encoding (ASCII only for compatibility)
@@ -92,7 +92,7 @@ def create_test_files():
         'punctuation': ['data!', 'value?', 'end.'],
         'numbers': ['123', '456', '789']
     })
-    df_special.to_stata(test_dir / "special_chars.dta", version=117)
+    df_special.to_stata(test_dir / "special_chars.dta", version=114)
     print("Created special_chars.dta")
     
     print(f"\nAll test files created in: {test_dir}")

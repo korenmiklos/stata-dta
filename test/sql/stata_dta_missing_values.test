@@ -16,8 +16,8 @@ require stata_dta
 query III
 SELECT 
     COUNT(*) as total,
-    COUNT(age) as non_missing,
-    COUNT(*) - COUNT(age) as missing_count
+    COUNT(score) as non_missing,
+    COUNT(*) - COUNT(score) as missing_count
 FROM read_stata_dta('test/data/with_missing.dta');
 ----
 5	3	2

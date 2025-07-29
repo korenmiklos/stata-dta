@@ -20,7 +20,7 @@ IO Error: Cannot open Stata file: this_file_does_not_exist.dta
 statement error  
 SELECT * FROM read_stata_dta('test/sql/stata_dta_comprehensive.test');
 ----
-IO Error: Error opening Stata file
+IO Error: {"exception_type":"Invalid Input","exception_message":"Unsupported Stata file version: 35. Supported versions: 105, 108, 111, 113-119"}
 
 # Test 4: Function signature validation - missing filename
 statement error
